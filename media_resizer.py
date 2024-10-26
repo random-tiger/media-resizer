@@ -179,7 +179,30 @@ def video_uploader():
 
                 # Save to a temporary file
                 temp_video_file = tempfile.NamedTemporaryFile(delete=False, suffix='.' + output_format)
-                resized_clip.write_videofile(temp_video_file.name, codec='libx264')
+
+                # Determine the audio codec based on the output format
+                if output_format == 'mp4':
+                    video_codec = 'libx264'
+                    audio_codec = 'aac'
+                elif output_format == 'avi':
+                    video_codec = 'mpeg4'
+                    audio_codec = 'mp3'
+                elif output_format == 'mov':
+                    video_codec = 'libx264'
+                    audio_codec = 'aac'
+                elif output_format == 'mkv':
+                    video_codec = 'libx264'
+                    audio_codec = 'aac'
+                else:
+                    video_codec = 'libx264'
+                    audio_codec = 'aac'
+
+                resized_clip.write_videofile(
+                    temp_video_file.name,
+                    codec=video_codec,
+                    audio_codec=audio_codec,
+                    audio=True
+                )
 
                 # Provide download link
                 with open(temp_video_file.name, 'rb') as f:
