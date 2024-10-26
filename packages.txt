@@ -1,1 +1,6 @@
 ffmpeg
+libjpeg-dev
+zlib1g-dev
+libpng-dev
+libtiff5-dev
+libfreetype6-dev
