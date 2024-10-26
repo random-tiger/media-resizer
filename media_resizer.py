@@ -22,8 +22,39 @@ def image_uploader():
         st.image(image, caption='Original Image', use_column_width=True)
 
         st.write("### Resize Options")
-        width = st.number_input("Width", min_value=1, value=image.width)
-        height = st.number_input("Height", min_value=1, value=image.height)
+
+        # Select unit of measurement
+        units = st.selectbox("Units", ["Pixels", "Inches", "Centimeters", "Millimeters"])
+
+        # Get image DPI
+        if 'dpi' in image.info:
+            dpi = image.info['dpi'][0]
+        else:
+            dpi = 72  # Default DPI
+
+        if units != "Pixels":
+            # Input DPI if units are not pixels
+            dpi = st.number_input("DPI (Dots Per Inch)", min_value=1, value=int(dpi))
+
+        # Input width and height based on selected units
+        if units == "Pixels":
+            width = st.number_input("Width (pixels)", min_value=1, value=image.width)
+            height = st.number_input("Height (pixels)", min_value=1, value=image.height)
+        else:
+            width_input = st.number_input(f"Width ({units.lower()})", min_value=0.01, value=round(image.width / dpi, 2))
+            height_input = st.number_input(f"Height ({units.lower()})", min_value=0.01, value=round(image.height / dpi, 2))
+
+            # Convert units to pixels
+            if units == "Inches":
+                width = int(width_input * dpi)
+                height = int(height_input * dpi)
+            elif units == "Centimeters":
+                width = int((width_input / 2.54) * dpi)
+                height = int((height_input / 2.54) * dpi)
+            elif units == "Millimeters":
+                width = int((width_input / 25.4) * dpi)
+                height = int((height_input / 25.4) * dpi)
+
         output_format = st.selectbox("Output Format", ["JPEG", "PNG", "BMP", "GIF"])
 
         if st.button("Resize and Convert Image"):
