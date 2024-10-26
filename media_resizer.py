@@ -101,7 +101,7 @@ def resize_image(image):
     resized_image = image.resize((width_pixels, height_pixels))
     st.image(resized_image, caption='Preview of Resized Image', use_column_width=True)
 
-    if st.button("Download Resized Image"):
+    if st.button("Generate Resized Image"):
         # Save to a temporary file
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.' + output_format.lower())
         resized_image.save(temp_file.name, output_format)
@@ -143,7 +143,7 @@ def crop_image(image):
 
     output_format = st.selectbox("Output Format", ["JPEG", "PNG", "BMP", "GIF"])
 
-    if st.button("Download Cropped Image"):
+    if st.button("Generate Cropped Image"):
         # Save to a temporary file
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.' + output_format.lower())
         cropped_image.save(temp_file.name, output_format)
