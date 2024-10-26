@@ -5,7 +5,7 @@ import tempfile
 import os
 
 # Set the maximum upload size
-st.set_option('server.maxUploadSize', 10028)  # Set to 1GB
+st.set_option('server.maxUploadSize', 1028)  # Set to 1GB
 
 def main():
     st.title("Media Resizer and Converter")
