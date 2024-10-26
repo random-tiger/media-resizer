@@ -116,7 +116,6 @@ def resize_image(image):
             st.download_button('Download Image', f, file_name='resized_image.' + output_format.lower())
         os.unlink(temp_file.name)
 
-
 def crop_image(image):
     st.write("### Crop Options")
 
@@ -149,7 +148,7 @@ def crop_image(image):
 
     output_format = st.selectbox("Output Format", ["JPEG", "PNG", "BMP", "GIF"])
 
-    if st.button("Download Cropped Image"):
+    if st.button("Generate Cropped Image"):
         # Save to a temporary file
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.' + output_format.lower())
         cropped_image.save(temp_file.name, output_format)
