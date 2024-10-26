@@ -42,66 +42,71 @@ def resize_image(image):
 
     if units != "Pixels":
         # Input DPI if units are not pixels
-        dpi = st.number_input("DPI (Dots Per Inch)", min_value=1, value=int(dpi))
+        dpi = st.number_input("DPI (Dots Per Inch)", min_value=1, value=int(dpi), key='dpi')
+    else:
+        st.session_state['dpi'] = dpi  # Ensure dpi is in session_state for consistency
 
     # Aspect Ratio Lock
     if 'aspect_ratio' not in st.session_state:
         st.session_state.aspect_ratio = image.width / image.height
 
-    maintain_aspect = st.checkbox("Maintain Aspect Ratio", value=True)
+    maintain_aspect = st.checkbox("Maintain Aspect Ratio", value=True, key='maintain_aspect')
 
-    # Define callbacks for width and height inputs
-    def update_width():
-        if maintain_aspect:
-            if units == "Pixels":
-                st.session_state['height'] = int(st.session_state['width'] / st.session_state.aspect_ratio)
-            else:
-                st.session_state['height'] = round(st.session_state['width'] / st.session_state.aspect_ratio, 2)
-
-    def update_height():
-        if maintain_aspect:
-            if units == "Pixels":
-                st.session_state['width'] = int(st.session_state['height'] * st.session_state.aspect_ratio)
-            else:
-                st.session_state['width'] = round(st.session_state['height'] * st.session_state.aspect_ratio, 2)
-
+    # Initialize width and height in session state
     if units == "Pixels":
-        # Input width and height in pixels with callbacks
-        width = st.number_input("Width (pixels)", min_value=1, value=image.width, key='width', on_change=update_width)
-        height = st.number_input("Height (pixels)", min_value=1, value=image.height, key='height', on_change=update_height)
-        width_pixels = int(width)
-        height_pixels = int(height)
+        unit_label = "pixels"
+        if 'width' not in st.session_state:
+            st.session_state.width = image.width
+        if 'height' not in st.session_state:
+            st.session_state.height = image.height
     else:
-        # Convert pixels to selected units
         if units == "Inches":
-            unit_conversion = dpi
+            unit_conversion = st.session_state.dpi
+            unit_label = "inches"
         elif units == "Centimeters":
-            unit_conversion = dpi / 2.54
+            unit_conversion = st.session_state.dpi / 2.54
+            unit_label = "centimeters"
         elif units == "Millimeters":
-            unit_conversion = dpi / 25.4
+            unit_conversion = st.session_state.dpi / 25.4
+            unit_label = "millimeters"
 
+        # Convert pixels to selected units
         width_in_units = round(image.width / unit_conversion, 2)
         height_in_units = round(image.height / unit_conversion, 2)
 
-        # Input width and height in selected units with callbacks
-        width = st.number_input(f"Width ({units.lower()})", min_value=0.01, value=width_in_units, key='width', on_change=update_width)
-        height = st.number_input(f"Height ({units.lower()})", min_value=0.01, value=height_in_units, key='height', on_change=update_height)
+        if 'width' not in st.session_state:
+            st.session_state.width = width_in_units
+        if 'height' not in st.session_state:
+            st.session_state.height = height_in_units
 
+    # Define callbacks for width and height inputs
+    def update_width():
+        if st.session_state.maintain_aspect:
+            st.session_state.height = round(float(st.session_state.width) / st.session_state.aspect_ratio, 2)
+
+    def update_height():
+        if st.session_state.maintain_aspect:
+            st.session_state.width = round(float(st.session_state.height) * st.session_state.aspect_ratio, 2)
+
+    # Input width and height with callbacks
+    width = st.number_input(f"Width ({unit_label})", min_value=0.01, key='width', on_change=update_width)
+    height = st.number_input(f"Height ({unit_label})", min_value=0.01, key='height', on_change=update_height)
+
+    if units == "Pixels":
+        width_pixels = int(st.session_state.width)
+        height_pixels = int(st.session_state.height)
+    else:
         # Convert back to pixels for resizing
-        width_pixels = int(width * unit_conversion)
-        height_pixels = int(height * unit_conversion)
+        width_pixels = int(float(st.session_state.width) * unit_conversion)
+        height_pixels = int(float(st.session_state.height) * unit_conversion)
 
     output_format = st.selectbox("Output Format", ["JPEG", "PNG", "BMP", "GIF"])
 
     # Display the resized image as a preview
-    if 'resized_image' not in st.session_state:
-        st.session_state['resized_image'] = image
-
-    # Perform resizing and display preview
     resized_image = image.resize((width_pixels, height_pixels))
     st.image(resized_image, caption='Preview of Resized Image', use_column_width=True)
 
-    if st.button("Generate Resized Image"):
+    if st.button("Download Resized Image"):
         # Save to a temporary file
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.' + output_format.lower())
         resized_image.save(temp_file.name, output_format)
@@ -110,6 +115,7 @@ def resize_image(image):
         with open(temp_file.name, 'rb') as f:
             st.download_button('Download Image', f, file_name='resized_image.' + output_format.lower())
         os.unlink(temp_file.name)
+
 
 def crop_image(image):
     st.write("### Crop Options")
