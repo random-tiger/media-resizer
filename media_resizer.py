@@ -69,6 +69,8 @@ def resize_image(image):
         # Input width and height in pixels with callbacks
         width = st.number_input("Width (pixels)", min_value=1, value=image.width, key='width', on_change=update_width)
         height = st.number_input("Height (pixels)", min_value=1, value=image.height, key='height', on_change=update_height)
+        width_pixels = int(width)
+        height_pixels = int(height)
     else:
         # Convert pixels to selected units
         if units == "Inches":
@@ -92,11 +94,7 @@ def resize_image(image):
     output_format = st.selectbox("Output Format", ["JPEG", "PNG", "BMP", "GIF"])
 
     if st.button("Resize and Convert Image"):
-        if units == "Pixels":
-            resized_image = image.resize((int(width), int(height)))
-        else:
-            resized_image = image.resize((width_pixels, height_pixels))
-
+        resized_image = image.resize((width_pixels, height_pixels))
         st.image(resized_image, caption='Resized Image', use_column_width=True)
 
         # Save to a temporary file
@@ -128,9 +126,9 @@ def crop_image(image):
         custom_height = st.number_input("Aspect Ratio Height", min_value=1, value=1)
         aspect_ratio = (custom_width, custom_height)
 
-    # Cropper settings
+    # Get cropping coordinates using st_cropper
     realtime_update = st.checkbox("Update in Real Time", value=True)
-    box_color = st.color_picker("Box Color", "#FF0000")
+    box_color = st.color_picker("Box Color", "#0000FF")
     aspect_ratio_value = None if aspect_ratio is None else aspect_ratio[0] / aspect_ratio[1]
 
     # Perform cropping
