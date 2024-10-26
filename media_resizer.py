@@ -36,29 +36,58 @@ def image_uploader():
             # Input DPI if units are not pixels
             dpi = st.number_input("DPI (Dots Per Inch)", min_value=1, value=int(dpi))
 
-        # Input width and height based on selected units
+        # Aspect Ratio Lock
+        if 'aspect_ratio' not in st.session_state:
+            st.session_state.aspect_ratio = image.width / image.height
+
+        maintain_aspect = st.checkbox("Maintain Aspect Ratio", value=True)
+
+        # Define callbacks for width and height inputs
+        def update_width():
+            if maintain_aspect:
+                if units == "Pixels":
+                    st.session_state['height'] = int(st.session_state['width'] / st.session_state.aspect_ratio)
+                else:
+                    st.session_state['height'] = round(st.session_state['width'] / st.session_state.aspect_ratio, 2)
+
+        def update_height():
+            if maintain_aspect:
+                if units == "Pixels":
+                    st.session_state['width'] = int(st.session_state['height'] * st.session_state.aspect_ratio)
+                else:
+                    st.session_state['width'] = round(st.session_state['height'] * st.session_state.aspect_ratio, 2)
+
         if units == "Pixels":
-            width = st.number_input("Width (pixels)", min_value=1, value=image.width)
-            height = st.number_input("Height (pixels)", min_value=1, value=image.height)
+            # Input width and height in pixels with callbacks
+            width = st.number_input("Width (pixels)", min_value=1, value=image.width, key='width', on_change=update_width)
+            height = st.number_input("Height (pixels)", min_value=1, value=image.height, key='height', on_change=update_height)
         else:
-            width_input = st.number_input(f"Width ({units.lower()})", min_value=0.01, value=round(image.width / dpi, 2))
-            height_input = st.number_input(f"Height ({units.lower()})", min_value=0.01, value=round(image.height / dpi, 2))
-
-            # Convert units to pixels
+            # Convert pixels to selected units
             if units == "Inches":
-                width = int(width_input * dpi)
-                height = int(height_input * dpi)
+                unit_conversion = dpi
             elif units == "Centimeters":
-                width = int((width_input / 2.54) * dpi)
-                height = int((height_input / 2.54) * dpi)
+                unit_conversion = dpi / 2.54
             elif units == "Millimeters":
-                width = int((width_input / 25.4) * dpi)
-                height = int((height_input / 25.4) * dpi)
+                unit_conversion = dpi / 25.4
 
+            width_in_units = round(image.width / unit_conversion, 2)
+            height_in_units = round(image.height / unit_conversion, 2)
+
+            # Input width and height in selected units with callbacks
+            width = st.number_input(f"Width ({units.lower()})", min_value=0.01, value=width_in_units, key='width', on_change=update_width)
+            height = st.number_input(f"Height ({units.lower()})", min_value=0.01, value=height_in_units, key='height', on_change=update_height)
+
+            # Convert back to pixels for resizing
+            width_pixels = int(width * unit_conversion)
+            height_pixels = int(height * unit_conversion)
         output_format = st.selectbox("Output Format", ["JPEG", "PNG", "BMP", "GIF"])
 
         if st.button("Resize and Convert Image"):
-            resized_image = image.resize((int(width), int(height)))
+            if units == "Pixels":
+                resized_image = image.resize((int(width), int(height)))
+            else:
+                resized_image = image.resize((width_pixels, height_pixels))
+
             st.image(resized_image, caption='Resized Image', use_column_width=True)
 
             # Save to a temporary file
