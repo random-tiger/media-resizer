@@ -70,4 +70,4 @@ def video_uploader():
             os.unlink(tfile.name)
 
 if __name__ == "__main__":
-    main() 
+    main()
