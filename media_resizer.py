@@ -4,6 +4,9 @@ import moviepy.editor as mp
 import tempfile
 import os
 
+# Set the maximum upload size
+st.set_option('server.maxUploadSize', 10028)  # Set to 1GB
+
 def main():
     st.title("Media Resizer and Converter")
     st.write("Upload an image or video file to resize and convert it to different formats.")
