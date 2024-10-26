@@ -1,3 +1,4 @@
 streamlit
 Pillow
 moviepy
+streamlit-cropper
