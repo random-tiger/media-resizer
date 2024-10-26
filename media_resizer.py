@@ -93,10 +93,15 @@ def resize_image(image):
 
     output_format = st.selectbox("Output Format", ["JPEG", "PNG", "BMP", "GIF"])
 
-    if st.button("Resize and Convert Image"):
-        resized_image = image.resize((width_pixels, height_pixels))
-        st.image(resized_image, caption='Resized Image', use_column_width=True)
+    # Display the resized image as a preview
+    if 'resized_image' not in st.session_state:
+        st.session_state['resized_image'] = image
 
+    # Perform resizing and display preview
+    resized_image = image.resize((width_pixels, height_pixels))
+    st.image(resized_image, caption='Preview of Resized Image', use_column_width=True)
+
+    if st.button("Download Resized Image"):
         # Save to a temporary file
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.' + output_format.lower())
         resized_image.save(temp_file.name, output_format)
