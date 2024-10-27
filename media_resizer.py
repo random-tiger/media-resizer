@@ -2,21 +2,35 @@ import streamlit as st
 import moviepy.editor as mp
 import tempfile
 import os
-from moviepy.video.fx.all import margin
 import openai
 import subprocess
 import platform
+import boto3
+import cv2
+import numpy as np
+import pandas as pd
+from sklearn.metrics.pairwise import cosine_similarity
+from scenedetect import VideoManager, SceneManager
+from scenedetect.detectors import ContentDetector
+import concurrent.futures
+from moviepy.video.fx.all import margin
+from PIL import Image
 
 def main():
-    st.title("Media Resizer, Cropper, and Converter")
-    st.write("Upload a video file to resize, crop, convert, and add subtitles.")
+    st.title("Media Resizer, Converter, and Scene Search")
+    st.write("Upload a video file to resize, convert, add subtitles, or search scenes based on prompts.")
     
-    operation_mode = st.sidebar.selectbox("Select Operation Mode", ["Video", "Subtitle Creation Mode"])
+    operation_mode = st.sidebar.selectbox(
+        "Select Operation Mode", 
+        ["Video", "Subtitle Creation Mode", "Scene Search"]
+    )
     
     if operation_mode == "Video":
         video_uploader()
     elif operation_mode == "Subtitle Creation Mode":
         subtitle_creation_mode()
+    elif operation_mode == "Scene Search":
+        scene_search_mode()
 
 def video_uploader():
     uploaded_video = st.file_uploader("Choose a video file", type=["mp4", "avi", "mov", "mkv"])
@@ -420,6 +434,246 @@ def embed_subtitles_into_video(video_file_path, subtitle_content, language):
     
     # Return the path to the output video file
     return output_video_file.name
+
+def scene_search_mode():
+    st.header("Scene Search Mode")
+    
+    # Check for AWS credentials and OpenAI API key in st.secrets
+    if ("AWS_ACCESS_KEY_ID" in st.secrets and 
+        "AWS_SECRET_ACCESS_KEY" in st.secrets and
+        "AWS_S3_BUCKET_NAME" in st.secrets and
+        "OPENAI_API_KEY" in st.secrets):
+        
+        aws_access_key_id = st.secrets["AWS_ACCESS_KEY_ID"]
+        aws_secret_access_key = st.secrets["AWS_SECRET_ACCESS_KEY"]
+        s3_bucket_name = st.secrets["AWS_S3_BUCKET_NAME"]
+        s3_region = st.secrets.get("AWS_REGION", "us-east-1")
+        openai.api_key = st.secrets["OPENAI_API_KEY"]
+    else:
+        st.error("AWS credentials or OpenAI API key not found in st.secrets. Please add them to your Streamlit secrets.")
+        return
+    
+    # Initialize S3 client
+    s3 = boto3.client(
+        's3',
+        region_name=s3_region,
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key
+    )
+    
+    # Prompt user to upload a video file
+    uploaded_video = st.file_uploader("Upload a video file for scene search", type=["mp4", "avi", "mov", "mkv"])
+    if uploaded_video is not None:
+        # Save the uploaded video to a temporary file
+        tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+        tfile.write(uploaded_video.read())
+        tfile.flush()
+        
+        # Display the video
+        st.video(tfile.name)
+        
+        # Extract scenes from the video
+        st.write("Extracting scenes from the video...")
+        try:
+            scene_list = extract_scenes(tfile.name)
+            st.write(f"Extracted {len(scene_list)} scenes.")
+        except Exception as e:
+            st.error(f"Error extracting scenes: {e}")
+            return
+        
+        # Process scenes
+        st.write("Processing scenes...")
+        scene_data_list = []
+        progress_bar = st.progress(0)
+        total_scenes = len(scene_list)
+        
+        # Process scenes in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            futures = []
+            for idx, scene_filename in enumerate(scene_list):
+                futures.append(
+                    executor.submit(
+                        process_scene, scene_filename, s3, s3_bucket_name, s3_region
+                    )
+                )
+            for idx, future in enumerate(concurrent.futures.as_completed(futures)):
+                data = future.result()
+                if data:
+                    scene_data_list.append(data)
+                progress_bar.progress((idx + 1) / total_scenes)
+        
+        if not scene_data_list:
+            st.error("No scenes were processed successfully.")
+            return
+        
+        # Create DataFrame
+        df_scenes = pd.DataFrame(scene_data_list)
+        
+        # User provides a prompt
+        st.write("### Search Scenes")
+        prompt = st.text_input("Enter a prompt to search for scenes:")
+        if prompt:
+            # Search for relevant scenes
+            results = search_scenes(prompt, df_scenes)
+            
+            if results.empty:
+                st.write("No matching scenes found.")
+            else:
+                # Display the results
+                st.write("### Search Results")
+                for index, row in results.iterrows():
+                    st.write(f"**Caption:** {row['caption']}")
+                    st.write(f"**Similarity Score:** {row['similarity']:.4f}")
+                    st.video(row['scene_url'])
+        else:
+            st.write("Please enter a prompt to search for scenes.")
+        
+        # Clean up temporary files
+        if os.path.exists(tfile.name):
+            os.unlink(tfile.name)
+    else:
+        st.write("Please upload a video file.")
+
+def extract_scenes(video_path):
+    # Use PySceneDetect to detect scenes
+    scene_list = []
+    try:
+        video_manager = VideoManager([video_path])
+        scene_manager = SceneManager()
+        scene_manager.add_detector(ContentDetector())
+        video_manager.start()
+        scene_manager.detect_scenes(frame_source=video_manager)
+        scene_list = scene_manager.get_scene_list()
+    except Exception as e:
+        st.error(f"Error during scene detection: {e}")
+    finally:
+        video_manager.release()
+    if not scene_list:
+        st.warning("No scenes were detected.")
+        return []
+    else:
+        # Save each scene as a separate video file
+        scene_filenames = []
+        for i, scene in enumerate(scene_list):
+            start_time = scene[0].get_seconds()
+            end_time = scene[1].get_seconds()
+            if end_time - start_time < 0.5:
+                continue  # Skip very short scenes
+            output_filename = f"scene_{i}.mp4"
+            output_filepath = os.path.join(tempfile.gettempdir(), output_filename)
+            cmd = [
+                'ffmpeg',
+                '-y',
+                '-i', video_path,
+                '-ss', str(start_time),
+                '-to', str(end_time),
+                '-c:v', 'libx264',
+                '-c:a', 'aac',
+                output_filepath
+            ]
+            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            scene_filenames.append(output_filepath)
+        return scene_filenames
+
+def process_scene(scene_filename, s3, s3_bucket_name, s3_region):
+    # Upload scene clip to S3 and get the URL
+    scene_url = upload_file_to_s3(scene_filename, s3, s3_bucket_name, s3_region, folder='scenes')
+    
+    # Extract a frame from the scene
+    frame_filename = extract_frame_from_scene(scene_filename)
+    if frame_filename is None:
+        return None
+    
+    # Upload the frame to S3 and get the URL
+    image_url = upload_file_to_s3(frame_filename, s3, s3_bucket_name, s3_region, folder='frames')
+    
+    # Generate caption using the image URL
+    caption = generate_caption(image_url)
+    
+    # Generate embedding
+    embedding = get_embedding(caption)
+    
+    # Return scene data
+    return {
+        'scene_filename': scene_filename,
+        'scene_url': scene_url,
+        'image_url': image_url,
+        'caption': caption,
+        'embedding': embedding
+    }
+
+def extract_frame_from_scene(scene_filename):
+    cap = cv2.VideoCapture(scene_filename)
+    if not cap.isOpened():
+        st.error(f"Failed to open video file {scene_filename}")
+        return None
+    ret, frame = cap.read()
+    cap.release()
+    if ret:
+        frame_filename = scene_filename + "_frame.jpg"
+        cv2.imwrite(frame_filename, frame)
+        return frame_filename
+    else:
+        st.error(f"Failed to read frame from {scene_filename}")
+        return None
+
+def upload_file_to_s3(file_path, s3, s3_bucket, s3_region, folder='files'):
+    file_name = os.path.basename(file_path)
+    s3_key = f"{folder}/{file_name}"
+    s3.upload_file(file_path, s3_bucket, s3_key, ExtraArgs={'ACL': 'public-read'})
+    file_url = f"https://{s3_bucket}.s3.{s3_region}.amazonaws.com/{s3_key}"
+    return file_url
+
+def generate_caption(image_url):
+    caption_system_prompt = '''
+You are an assistant that generates concise captions for images. These captions will be embedded and stored so 
+people can semantically search for scenes. Ensure your captions include:
+- Physical descriptions of people
+- Identify and name key actors
+- Descriptions of key scene objects such as their color
+- The mood of the scene
+- The actions or activities taking place in the scene
+- Describe the quality of the image and suitability for promotional material
+- Describe the angle and depth of the images (e.g., zoomed in close-up, zoomed out, etc.)
+'''
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4o-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": caption_system_prompt
+            },
+            {
+                "role": "user",
+                "content": "",
+                "function_call": {
+                    "name": "generate_caption",
+                    "arguments": {
+                        "image_url": image_url
+                    }
+                }
+            }
+        ],
+        max_tokens=300,
+        temperature=0.2
+    )
+    return response['choices'][0]['message']['content']
+
+def get_embedding(value, model="text-embedding-ada-002"):
+    response = openai.Embedding.create(
+        model=model,
+        input=value
+    )
+    return response['data'][0]['embedding']
+
+def search_scenes(prompt, df_scenes, top_n=5):
+    prompt_embedding = get_embedding(prompt)
+    df_scenes['similarity'] = df_scenes['embedding'].apply(
+        lambda x: cosine_similarity([x], [prompt_embedding])[0][0]
+    )
+    results = df_scenes.sort_values('similarity', ascending=False).head(top_n)
+    return results
 
 if __name__ == "__main__":
     main()
