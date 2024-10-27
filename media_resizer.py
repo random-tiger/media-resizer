@@ -7,6 +7,8 @@ from streamlit_cropper import st_cropper
 from moviepy.video.fx.all import margin
 
 def main():
+    import sys
+    st.write(f"Python version: {sys.version}")
     st.title("Media Resizer, Cropper, and Converter")
     st.write("Upload an image or video file to resize, crop, and convert it to different formats.")
 
