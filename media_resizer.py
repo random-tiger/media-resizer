@@ -14,6 +14,8 @@ from scenedetect.detectors import ContentDetector
 from moviepy.video.fx.all import margin
 from PIL import Image
 from openai import OpenAI
+import requests
+
 
 def main():
     st.title("Media Resizer, Converter, and Scene Search")
@@ -31,6 +33,13 @@ def main():
     elif operation_mode == "Scene Search":
         scene_search_mode()
         
+def is_url_accessible(url):
+    try:
+        response = requests.head(url, timeout=5)
+        return response.status_code == 200
+    except requests.RequestException:
+        return False
+
 def video_uploader():
     uploaded_video = st.file_uploader("Choose a video file", type=["mp4", "avi", "mov", "mkv"])
     if uploaded_video is not None:
@@ -411,19 +420,17 @@ def extract_audio(video_file_path):
 
 def generate_subtitles(audio_file_path, language_code, client):
     with open(audio_file_path, 'rb') as audio_file:
-        response = client.embeddings.create(
-            input="Your text string goes here",
-            model="text-embedding-3-small"
-        )
-        # Note: Replace the above with the correct OpenAI API call for transcription
-        # As per the latest documentation, use the appropriate method
-        response = client.audio.transcriptions.create(
-            file=audio_file,
-            model="whisper-1",
-            response_format="srt",
-            language=language_code
-        )
-    return response['text']  # The response contains the SRT content as text
+        try:
+            response = client.audio.transcriptions.create(
+                file=audio_file,
+                model="whisper-1",
+                response_format="srt",
+                language=language_code
+            )
+            return response['text']  # The response contains the SRT content as text
+        except Exception as e:
+            st.error(f"Error during transcription: {e}")
+            return None
 
 def embed_subtitles_into_video(video_file_path, subtitle_content, language):
     # Save the subtitles to a .srt file
@@ -508,6 +515,10 @@ def scene_search_mode():
             st.write(f"Extracted {len(scene_list)} scenes.")
         except Exception as e:
             st.error(f"Error extracting scenes: {e}")
+            return
+        
+        if not scene_list:
+            st.warning("No scenes were detected in the video.")
             return
         
         # Process scenes
@@ -598,20 +609,29 @@ def extract_scenes(video_path):
 def process_scene(scene_filename, s3, s3_bucket_name, s3_region, client):
     # Upload scene clip to S3 and get the URL
     scene_url = upload_file_to_s3(scene_filename, s3, s3_bucket_name, s3_region, folder='scenes')
-
+    
     # Extract a frame from the scene
     frame_filename = extract_frame_from_scene(scene_filename)
     if frame_filename is None:
         return None
 
-    # Upload the frame image to S3
+    # Upload the frame image to S3 and get the pre-signed URL
     frame_url = upload_file_to_s3(frame_filename, s3, s3_bucket_name, s3_region, folder='frames')
-
+    
+    # Verify if the image URL is accessible
+    if not is_url_accessible(frame_url):
+        st.error(f"Generated image URL is not accessible: {frame_url}")
+        return None
+    
     # Generate caption using GPT-4o with the frame URL
     caption = generate_caption(frame_url, client)
+    if caption is None:
+        return None
 
     # Generate embedding using ADA embeddings model
     embedding = get_embedding(caption, client)
+    if embedding is None:
+        return None
 
     # Return scene data
     return {
@@ -630,13 +650,31 @@ def extract_frame_from_scene(scene_filename):
     cap.release()
     if ret:
         frame_filename = scene_filename + "_frame.jpg"
-        cv2.imwrite(frame_filename, frame)
+        
+        # Optional: Resize the frame to reduce size and prevent timeout
+        desired_width = 800  # Adjust as needed
+        height, width, channels = frame.shape
+        aspect_ratio = width / height
+        desired_height = int(desired_width / aspect_ratio)
+        resized_frame = cv2.resize(frame, (desired_width, desired_height))
+        
+        cv2.imwrite(frame_filename, resized_frame)
+        
+        # Verify the saved image is not corrupted
+        try:
+            with Image.open(frame_filename) as img:
+                img.verify()  # Will raise an exception if the image is corrupted
+        except Exception as e:
+            st.error(f"Extracted frame is corrupted: {e}")
+            os.remove(frame_filename)
+            return None
+        
         return frame_filename
     else:
         st.error(f"Failed to read frame from {scene_filename}")
         return None
 
-def upload_file_to_s3(file_path, s3, s3_bucket, s3_region, folder='files'):
+def upload_file_to_s3(file_path, s3, s3_bucket, s3_region, folder='files', expiration=3600):
     file_name = os.path.basename(file_path)
     s3_key = f"{folder}/{file_name}"
     # Determine content type based on file extension
@@ -650,17 +688,25 @@ def upload_file_to_s3(file_path, s3, s3_bucket, s3_region, folder='files'):
         content_type = 'video/mp4'
     elif ext.lower() in ['.srt']:
         content_type = 'text/plain'
+    
+    # Upload the file without public-read ACL
     s3.upload_file(
         file_path, 
         s3_bucket, 
         s3_key, 
         ExtraArgs={
-            'ACL': 'public-read',
             'ContentType': content_type
         }
     )
-    file_url = f"https://{s3_bucket}.s3.{s3_region}.amazonaws.com/{s3_key}"
-    return file_url
+    
+    # Generate a pre-signed URL
+    presigned_url = s3.generate_presigned_url(
+        'get_object',
+        Params={'Bucket': s3_bucket, 'Key': s3_key},
+        ExpiresIn=expiration
+    )
+    
+    return presigned_url
 
 def generate_caption(image_url, client):
     caption_system_prompt = '''
@@ -676,44 +722,60 @@ people can semantically search for scenes. Ensure your captions include:
 '''
 
     # Generate caption using GPT-4o for the provided image URL
-    completion = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {
-                "role": "system",
-                "content": [
-                    {"type": "text", "text": caption_system_prompt}
-                ]
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "Generate a caption for this image:"},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": image_url,
-                        }
-                    },
-                ],
-            }
-        ],
-    )
+    try:
+        completion = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system",
+                    "content": [
+                        {"type": "text", "text": caption_system_prompt}
+                    ]
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Generate a caption for this image:"},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": image_url,
+                            }
+                        },
+                    ],
+                }
+            ],
+        )
 
-    # Access the message content directly from 'choices'
-    caption = completion.choices[0].message.content
+        # Access the message content directly from 'choices'
+        caption = completion.choices[0].message.content.strip()
 
-    return caption
+        return caption
+    except Exception as e:
+        st.error(f"Error generating caption: {e}")
+        return None
 
-def get_embedding(value, client, model="text-embedding-3-small"):
-    response = client.embeddings.create(
-        input=value,
-        model=model
-    )
-    return response.data[0].embedding
+def get_embedding(text, client, model="text-embedding-ada-002"):
+    # Replace newline characters with spaces to ensure single-line input
+    text = text.replace("\n", " ")
+    
+    # Create the embedding by passing a list containing the text
+    try:
+        response = client.embeddings.create(
+            input=[text],
+            model=model
+        )
+        # Access the embedding using attribute-based access
+        return response.data[0].embedding
+    except Exception as e:
+        st.error(f"Error generating embedding: {e}")
+        return None
 
 def search_scenes(prompt, df_scenes, client, top_n=5):
     prompt_embedding = get_embedding(prompt, client)
+    if prompt_embedding is None:
+        return pd.DataFrame()  # Return empty DataFrame if embedding failed
+    
     df_scenes['similarity'] = df_scenes['embedding'].apply(
         lambda x: cosine_similarity([x], [prompt_embedding])[0][0]
     )
