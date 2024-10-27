@@ -17,6 +17,6 @@ ffmpeg
 opencv-python
 ffmpeg-python
 opencv-python-headless
-concurrent.futures
+futures
 torch
 transformers
