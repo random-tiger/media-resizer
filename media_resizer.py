@@ -1,5 +1,5 @@
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageOps
 import moviepy.editor as mp
 import tempfile
 import os
@@ -34,85 +34,96 @@ def image_uploader():
 def resize_image(image):
     st.write("### Resize Options")
 
-    # Select unit of measurement
-    units = st.selectbox("Units", ["Pixels", "Inches", "Centimeters", "Millimeters"])
+    # Define platforms and use cases
+    platforms = ["Instagram", "Facebook", "Youtube", "Twitter", "Snapchat", "Linkedin", "Pinterest", "Custom"]
+    platform = st.selectbox("Select Platform", platforms)
 
-    # Get image DPI
-    if 'dpi' in image.info:
-        dpi = image.info['dpi'][0]
+    platform_use_cases = {
+        "Instagram": ["Feed Square", "Feed Vertical", "Feed Full Portrait", "Stories"],
+        "Facebook": ["Feed Horizontal", "Feed Square", "Feed Vertical", "Feed Full Portrait", "Cover", "Stories", "Instant Articles Horizontal", "Instant Articles Square", "Instant Articles Vertical", "Instant Articles Full Portrait"],
+        "Youtube": ["Feed Horizontal", "In-Stream"],
+        "Twitter": ["Feed Horizontal", "Feed Square", "Feed Vertical"],
+        "Snapchat": ["Stories"],
+        "Linkedin": ["Feed Horizontal", "Feed Square", "Feed Vertical"],
+        "Pinterest": ["Feed Square", "Feed Vertical", "Feed Full Portrait"],
+        "Custom": ["Custom"],
+    }
+
+    use_cases = platform_use_cases.get(platform, [])
+    use_case = st.selectbox("Select Use Case", use_cases)
+
+    aspect_ratios = {
+        "Feed Horizontal": (16, 9),
+        "Feed Square": (1, 1),
+        "Feed Vertical": (4, 5),
+        "Feed Full Portrait": (9, 16),
+        "Cover": (16, 9),
+        "In-Stream": (16, 9),
+        "Stories": (9, 16),
+        "Instant Articles Horizontal": (16, 9),
+        "Instant Articles Square": (1, 1),
+        "Instant Articles Vertical": (4, 5),
+        "Instant Articles Full Portrait": (9, 16),
+        "Custom": None,
+    }
+
+    if use_case == "Custom":
+        # Allow user to input custom dimensions
+        custom_width = st.number_input("Custom Width (pixels)", min_value=1, value=1080)
+        custom_height = st.number_input("Custom Height (pixels)", min_value=1, value=1920)
+        desired_width = custom_width
+        desired_height = custom_height
     else:
-        dpi = 72  # Default DPI
+        aspect_ratio = aspect_ratios.get(use_case, None)
+        if aspect_ratio is None:
+            st.error("Invalid aspect ratio selected.")
+            return
 
-    if units != "Pixels":
-        # Input DPI if units are not pixels
-        dpi = st.number_input("DPI (Dots Per Inch)", min_value=1, value=int(dpi), key='dpi')
-    else:
-        st.session_state['dpi'] = dpi  # Ensure dpi is in session_state for consistency
+        desired_width = st.number_input("Desired Width (pixels)", min_value=1, value=1080)
+        desired_height = int(desired_width * aspect_ratio[1] / aspect_ratio[0])
 
-    # Aspect Ratio Lock
-    if 'aspect_ratio' not in st.session_state:
-        st.session_state.aspect_ratio = image.width / image.height
+    st.write(f"Calculated Height: {desired_height} pixels")
 
-    maintain_aspect = st.checkbox("Maintain Aspect Ratio", value=True, key='maintain_aspect')
-
-    # Initialize width and height in session state
-    if units == "Pixels":
-        unit_label = "pixels"
-        if 'width' not in st.session_state:
-            st.session_state.width = image.width
-        if 'height' not in st.session_state:
-            st.session_state.height = image.height
-    else:
-        if units == "Inches":
-            unit_conversion = st.session_state.dpi
-            unit_label = "inches"
-        elif units == "Centimeters":
-            unit_conversion = st.session_state.dpi / 2.54
-            unit_label = "centimeters"
-        elif units == "Millimeters":
-            unit_conversion = st.session_state.dpi / 25.4
-            unit_label = "millimeters"
-
-        # Convert pixels to selected units
-        width_in_units = round(image.width / unit_conversion, 2)
-        height_in_units = round(image.height / unit_conversion, 2)
-
-        if 'width' not in st.session_state:
-            st.session_state.width = width_in_units
-        if 'height' not in st.session_state:
-            st.session_state.height = height_in_units
-
-    # Define callbacks for width and height inputs
-    def update_width():
-        if st.session_state.maintain_aspect:
-            st.session_state.height = round(float(st.session_state.width) / st.session_state.aspect_ratio, 2)
-
-    def update_height():
-        if st.session_state.maintain_aspect:
-            st.session_state.width = round(float(st.session_state.height) * st.session_state.aspect_ratio, 2)
-
-    # Input width and height with callbacks
-    width = st.number_input(f"Width ({unit_label})", min_value=0.01, key='width', on_change=update_width)
-    height = st.number_input(f"Height ({unit_label})", min_value=0.01, key='height', on_change=update_height)
-
-    if units == "Pixels":
-        width_pixels = int(st.session_state.width)
-        height_pixels = int(st.session_state.height)
-    else:
-        # Convert back to pixels for resizing
-        width_pixels = int(float(st.session_state.width) * unit_conversion)
-        height_pixels = int(float(st.session_state.height) * unit_conversion)
+    # Option to choose resize method
+    resize_method = st.radio("Select Resize Method", ["Crop", "Pad (Add borders)"])
 
     output_format = st.selectbox("Output Format", ["JPEG", "PNG", "BMP", "GIF"])
 
-    # Display the resized image as a preview
-    resized_image = image.resize((width_pixels, height_pixels))
-    st.image(resized_image, caption='Preview of Resized Image', use_column_width=True)
+    # Resize the image while maintaining aspect ratio
+    img_aspect_ratio = image.width / image.height
+    target_aspect_ratio = desired_width / desired_height
+
+    if img_aspect_ratio > target_aspect_ratio:
+        # Image is wider than target aspect ratio
+        scale_factor = desired_height / image.height
+    else:
+        # Image is taller than target aspect ratio
+        scale_factor = desired_width / image.width
+
+    new_width = int(image.width * scale_factor)
+    new_height = int(image.height * scale_factor)
+    resized_image = image.resize((new_width, new_height), Image.ANTIALIAS)
+
+    if resize_method == "Crop":
+        # Crop the image to the desired dimensions
+        left = (new_width - desired_width) / 2
+        top = (new_height - desired_height) / 2
+        right = (new_width + desired_width) / 2
+        bottom = (new_height + desired_height) / 2
+        final_image = resized_image.crop((left, top, right, bottom))
+    else:
+        # Pad the image to the desired dimensions
+        delta_width = desired_width - new_width
+        delta_height = desired_height - new_height
+        padding = (delta_width // 2, delta_height // 2, delta_width - (delta_width // 2), delta_height - (delta_height // 2))
+        final_image = ImageOps.expand(resized_image, padding, fill=(0, 0, 0))
+
+    st.image(final_image, caption='Preview of Resized Image', use_column_width=True)
 
     if st.button("Download Resized Image"):
         # Save to a temporary file
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.' + output_format.lower())
-        resized_image.save(temp_file.name, output_format)
+        final_image.save(temp_file.name, output_format)
 
         # Provide download link
         with open(temp_file.name, 'rb') as f:
@@ -127,7 +138,8 @@ def crop_image(image):
         "Free": None,
         "1:1 (Square)": (1, 1),
         "16:9": (16, 9),
-        "4:3": (4, 3),
+        "9:16": (9, 16),
+        "4:5": (4, 5),
         "Custom": "Custom"
     }
 
@@ -169,37 +181,117 @@ def video_uploader():
         tfile.write(uploaded_video.read())
         tfile.flush()
         st.video(tfile.name)
-    
+
         st.write("### Resize Options")
-        resolution = st.selectbox("Resolution", ["1920x1080", "1280x720", "854x480", "640x360"])
+
+        # Define platforms and use cases
+        platforms = ["Instagram", "Facebook", "Youtube", "Twitter", "Snapchat", "Linkedin", "Pinterest", "Custom"]
+        platform = st.selectbox("Select Platform", platforms)
+
+        platform_use_cases = {
+            "Instagram": ["Feed Square", "Feed Vertical", "Feed Full Portrait", "Stories"],
+            "Facebook": ["Feed Horizontal", "Feed Square", "Feed Vertical", "Feed Full Portrait", "Cover", "Stories", "Instant Articles Horizontal", "Instant Articles Square", "Instant Articles Vertical", "Instant Articles Full Portrait"],
+            "Youtube": ["Feed Horizontal", "In-Stream"],
+            "Twitter": ["Feed Horizontal", "Feed Square", "Feed Vertical"],
+            "Snapchat": ["Stories"],
+            "Linkedin": ["Feed Horizontal", "Feed Square", "Feed Vertical"],
+            "Pinterest": ["Feed Square", "Feed Vertical", "Feed Full Portrait"],
+            "Custom": ["Custom"],
+        }
+
+        use_cases = platform_use_cases.get(platform, [])
+        use_case = st.selectbox("Select Use Case", use_cases)
+
+        aspect_ratios = {
+            "Feed Horizontal": (16, 9),
+            "Feed Square": (1, 1),
+            "Feed Vertical": (4, 5),
+            "Feed Full Portrait": (9, 16),
+            "Cover": (16, 9),
+            "In-Stream": (16, 9),
+            "Stories": (9, 16),
+            "Instant Articles Horizontal": (16, 9),
+            "Instant Articles Square": (1, 1),
+            "Instant Articles Vertical": (4, 5),
+            "Instant Articles Full Portrait": (9, 16),
+            "Custom": None,
+        }
+
+        if use_case == "Custom":
+            # Allow user to input custom dimensions
+            custom_width = st.number_input("Custom Width (pixels)", min_value=1, value=1080)
+            custom_height = st.number_input("Custom Height (pixels)", min_value=1, value=1920)
+            desired_width = custom_width
+            desired_height = custom_height
+        else:
+            aspect_ratio = aspect_ratios.get(use_case, None)
+            if aspect_ratio is None:
+                st.error("Invalid aspect ratio selected.")
+                return
+
+            desired_width = st.number_input("Desired Width (pixels)", min_value=1, value=1080)
+            desired_height = int(desired_width * aspect_ratio[1] / aspect_ratio[0])
+
+        st.write(f"Calculated Height: {desired_height} pixels")
+
+        # Option to choose resize method
+        resize_method = st.radio("Select Resize Method", ["Crop", "Pad (Add borders)"])
+
         output_format = st.selectbox("Output Format", ["mp4", "avi", "mov", "mkv"])
-    
+
         if st.button("Resize and Convert Video"):
             try:
                 clip = mp.VideoFileClip(tfile.name)
-                width, height = map(int, resolution.split('x'))
-    
-                # Maintain aspect ratio and add padding
-                original_aspect = clip.w / clip.h
-                new_aspect = width / height
-    
-                if original_aspect > new_aspect:
-                    resized_clip = clip.resize(width=width)
-                    pad_height = max((height - resized_clip.h) / 2, 0)
-                    resized_clip = margin(resized_clip, top=int(pad_height), bottom=int(pad_height), color=(0, 0, 0))
+
+                # Resize the clip while maintaining aspect ratio
+                clip_aspect_ratio = clip.w / clip.h
+                target_aspect_ratio = desired_width / desired_height
+
+                if clip_aspect_ratio > target_aspect_ratio:
+                    # Video is wider than target aspect ratio
+                    new_height = desired_height
+                    new_width = int(clip.w * (desired_height / clip.h))
                 else:
-                    resized_clip = clip.resize(height=height)
-                    pad_width = max((width - resized_clip.w) / 2, 0)
-                    resized_clip = margin(resized_clip, left=int(pad_width), right=int(pad_width), color=(0, 0, 0))
-    
-                # Ensure the final clip has the desired dimensions
-                resized_clip = resized_clip.resize(newsize=(width, height))
-    
+                    # Video is taller than target aspect ratio
+                    new_width = desired_width
+                    new_height = int(clip.h * (desired_width / clip.w))
+
+                resized_clip = clip.resize(newsize=(new_width, new_height))
+
+                if resize_method == "Crop":
+                    # Crop the clip to the desired dimensions
+                    x_center = new_width / 2
+                    y_center = new_height / 2
+                    x1 = x_center - desired_width / 2
+                    y1 = y_center - desired_height / 2
+                    x2 = x_center + desired_width / 2
+                    y2 = y_center + desired_height / 2
+
+                    cropped_clip = resized_clip.crop(x1=max(0, x1), y1=max(0, y1), x2=min(new_width, x2), y2=min(new_height, y2))
+                    final_clip = cropped_clip
+                else:
+                    # Pad the clip to the desired dimensions
+                    pad_width = desired_width - new_width
+                    pad_height = desired_height - new_height
+                    pad_left = int(pad_width / 2)
+                    pad_right = pad_width - pad_left
+                    pad_top = int(pad_height / 2)
+                    pad_bottom = pad_height - pad_top
+
+                    final_clip = margin(
+                        resized_clip,
+                        left=pad_left,
+                        right=pad_right,
+                        top=pad_top,
+                        bottom=pad_bottom,
+                        color=(0, 0, 0)
+                    )
+
                 # Save to a temporary file
                 temp_video_file = tempfile.NamedTemporaryFile(delete=False, suffix='.' + output_format)
                 temp_video_path = temp_video_file.name
                 temp_video_file.close()  # Close the file so MoviePy can write to it
-    
+
                 # Determine the audio codec based on the output format
                 if output_format == 'mp4':
                     video_codec = 'libx264'
@@ -216,10 +308,10 @@ def video_uploader():
                 else:
                     video_codec = 'libx264'
                     audio_codec = 'aac'
-    
+
                 # Use faster encoding preset and other optimizations
                 ffmpeg_params = ['-preset', 'ultrafast', '-ac', '2']
-                resized_clip.write_videofile(
+                final_clip.write_videofile(
                     temp_video_path,
                     codec=video_codec,
                     audio_codec=audio_codec,
@@ -228,15 +320,15 @@ def video_uploader():
                     ffmpeg_params=ffmpeg_params,
                     logger=None  # Suppress verbose output
                 )
-    
+
                 # Display the resized video
                 st.write("### Resized Video Preview")
                 st.video(temp_video_path)
-    
+
                 # Provide download link
                 with open(temp_video_path, 'rb') as f:
                     st.download_button('Download Resized Video', f, file_name='resized_video.' + output_format)
-    
+
                 # Clean up temporary files
                 os.unlink(temp_video_path)
                 os.unlink(tfile.name)
