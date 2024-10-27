@@ -475,7 +475,7 @@ def video_uploader():
                     codec=video_codec,
                     audio_codec=audio_codec,
                     audio=True,
-                    threads=4,  # Adjust based on your CPU
+                    threads=12,  # Adjust based on your CPU
                     ffmpeg_params=ffmpeg_params,
                     logger=None  # Suppress verbose output
                 )
