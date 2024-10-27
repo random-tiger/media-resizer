@@ -349,36 +349,37 @@ def video_uploader():
 
         # Link or unlink aspect ratio
         link_aspect = st.checkbox("Link Aspect Ratio", value=True)
-
+        
         # Initialize width and height based on default dimensions
         default_width = 1080  # Set a standard default width
         default_height = int(default_width / aspect_ratio_value)
 
-        if 'last_vid_aspect_ratio_name' not in st.session_state:
-            st.session_state.last_vid_aspect_ratio_name = selected_aspect_ratio_name
-            vid_width = default_width
-            vid_height = default_height
+        # Initialize or retrieve vid_width and vid_height
+        if 'vid_width' not in st.session_state:
+            st.session_state['vid_width'] = default_width
+            st.session_state['vid_height'] = default_height
+            st.session_state['last_vid_aspect_ratio_name'] = selected_aspect_ratio_name
         else:
-            if st.session_state.last_vid_aspect_ratio_name != selected_aspect_ratio_name:
-                st.session_state.last_vid_aspect_ratio_name = selected_aspect_ratio_name
-                vid_width = default_width
-                vid_height = default_height
-            else:
-                vid_width = st.session_state.get('vid_width', default_width)
-                vid_height = st.session_state.get('vid_height', default_height)
-
-        # Input fields
+            if st.session_state['last_vid_aspect_ratio_name'] != selected_aspect_ratio_name:
+                st.session_state['vid_width'] = default_width
+                st.session_state['vid_height'] = default_height
+                st.session_state['last_vid_aspect_ratio_name'] = selected_aspect_ratio_name
+        
+        vid_width = st.session_state['vid_width']
+        vid_height = st.session_state['vid_height']
+        
+        # Input fields with unique keys
         col1, col2 = st.columns(2)
         with col1:
-            vid_width = st.number_input("Width (pixels)", min_value=1, value=vid_width)
+            vid_width = st.number_input("Width (pixels)", min_value=1, value=vid_width, key='vid_width_input')
         with col2:
             if link_aspect:
                 vid_height = int(vid_width / aspect_ratio_value)
                 st.markdown(f"**Height (pixels): {vid_height}**")
             else:
-                vid_height = st.number_input("Height (pixels)", min_value=1, value=vid_height)
-
-        # Update session_state
+                vid_height = st.number_input("Height (pixels)", min_value=1, value=vid_height, key='vid_height_input')
+        
+        # Update session_state after inputs
         st.session_state['vid_width'] = vid_width
         st.session_state['vid_height'] = vid_height
 
