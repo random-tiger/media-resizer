@@ -253,6 +253,16 @@ def video_uploader():
 
         st.write("### Resize Options")
 
+        # Load the video clip to get dimensions
+        try:
+            clip = mp.VideoFileClip(tfile.name)
+            original_width = clip.w
+            original_height = clip.h
+            original_aspect_ratio = original_width / original_height
+        except Exception as e:
+            st.error(f"An error occurred while loading the video: {e}")
+            return
+
         # Define platforms and their aspect ratios
         platforms = ["Instagram", "Facebook", "YouTube", "Twitter", "Snapchat", "LinkedIn", "Pinterest", "Custom"]
         platform = st.selectbox("Select Platform", platforms)
@@ -333,30 +343,39 @@ def video_uploader():
         # Link or unlink aspect ratio
         link_aspect = st.checkbox("Link Aspect Ratio", value=True)
 
-        # Initialize width and height
-        default_width = 1080
-        default_height = int(default_width / aspect_ratio_value)
-
-        # Reset width and height when aspect ratio changes
-        if 'last_vid_aspect_ratio' not in st.session_state:
+        # Initialize width and height based on original video dimensions
+        if 'vid_width' not in st.session_state or 'vid_height' not in st.session_state or st.session_state.last_vid_aspect_ratio != aspect_ratio:
             st.session_state.last_vid_aspect_ratio = aspect_ratio
-            st.session_state.vid_width = default_width
-            st.session_state.vid_height = default_height
-        else:
-            if st.session_state.last_vid_aspect_ratio != aspect_ratio:
-                st.session_state.last_vid_aspect_ratio = aspect_ratio
-                st.session_state.vid_width = default_width
-                st.session_state.vid_height = default_height
+
+            if original_aspect_ratio >= aspect_ratio_value:
+                # Original video is wider than target aspect ratio
+                st.session_state.vid_height = original_height
+                st.session_state.vid_width = int(st.session_state.vid_height * aspect_ratio_value)
+            else:
+                # Original video is taller than target aspect ratio
+                st.session_state.vid_width = original_width
+                st.session_state.vid_height = int(st.session_state.vid_width / aspect_ratio_value)
+
+        # Option to fix width or height
+        fix_dimension = st.radio("Fix Dimension", ["Width", "Height"])
 
         # Input fields
         col1, col2 = st.columns(2)
         with col1:
-            st.number_input("Width (pixels)", min_value=1, value=st.session_state.vid_width, key='vid_width')
+            if fix_dimension == "Width":
+                st.number_input("Width (pixels)", min_value=1, value=st.session_state.vid_width, key='vid_width')
+                if link_aspect:
+                    st.session_state.vid_height = int(st.session_state.vid_width / aspect_ratio_value)
+                    st.markdown(f"**Height (pixels): {st.session_state.vid_height}**")
+            else:
+                st.number_input("Width (pixels)", min_value=1, value=st.session_state.vid_width, key='vid_width')
+
         with col2:
-            if link_aspect and (platform != 'Custom' or selected_common_aspect_ratio != 'Custom'):
-                # Height is calculated
-                st.session_state.vid_height = int(st.session_state.vid_width / aspect_ratio_value)
-                st.markdown(f"**Height (pixels): {st.session_state.vid_height}**")
+            if fix_dimension == "Height":
+                st.number_input("Height (pixels)", min_value=1, value=st.session_state.vid_height, key='vid_height')
+                if link_aspect:
+                    st.session_state.vid_width = int(st.session_state.vid_height * aspect_ratio_value)
+                    st.markdown(f"**Width (pixels): {st.session_state.vid_width}**")
             else:
                 st.number_input("Height (pixels)", min_value=1, value=st.session_state.vid_height, key='vid_height')
 
@@ -367,20 +386,19 @@ def video_uploader():
 
         if st.button("Resize and Convert Video"):
             try:
-                clip = mp.VideoFileClip(tfile.name)
-
+                # The clip has already been loaded
                 # Resize the clip while maintaining aspect ratio
                 clip_aspect_ratio = clip.w / clip.h
                 target_aspect_ratio = st.session_state.vid_width / st.session_state.vid_height
 
-                if clip_aspect_ratio > target_aspect_ratio:
-                    # Video is wider
-                    new_height = st.session_state.vid_height
-                    new_width = int(clip.w * (st.session_state.vid_height / clip.h))
+                # Determine scaling factors
+                if fix_dimension == "Width":
+                    scale_factor = st.session_state.vid_width / clip.w
                 else:
-                    # Video is taller
-                    new_width = st.session_state.vid_width
-                    new_height = int(clip.h * (st.session_state.vid_width / clip.w))
+                    scale_factor = st.session_state.vid_height / clip.h
+
+                new_width = int(clip.w * scale_factor)
+                new_height = int(clip.h * scale_factor)
 
                 resized_clip = clip.resize(newsize=(new_width, new_height))
 
@@ -459,11 +477,13 @@ def video_uploader():
                 with open(temp_video_path, 'rb') as f:
                     st.download_button('Download Resized Video', f, file_name='resized_video.' + output_format)
 
-                # Clean up temporary files
-                os.unlink(temp_video_path)
-                os.unlink(tfile.name)
             except Exception as e:
                 st.error(f"An error occurred during video processing: {e}")
+            finally:
+                # Clean up temporary files and release resources
+                clip.close()
+                os.unlink(temp_video_path)
+                os.unlink(tfile.name)
 
 if __name__ == "__main__":
     main()
