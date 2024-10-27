@@ -11,7 +11,6 @@ import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 from scenedetect import open_video, SceneManager
 from scenedetect.detectors import ContentDetector
-import concurrent.futures
 from moviepy.video.fx.all import margin
 from PIL import Image
 from openai import OpenAI
@@ -141,12 +140,18 @@ def video_uploader():
         if 'vid_width' not in st.session_state:
             st.session_state['vid_width'] = default_width
             st.session_state['vid_height'] = default_height
-            st.session_state['last_vid_aspect_ratio_name'] = selected_aspect_ratio_name
+            st.session_state['last_vid_aspect_ratio_name'] = selected_aspect_ratio_name if platform != "Custom" else "Custom"
         else:
-            if st.session_state['last_vid_aspect_ratio_name'] != selected_aspect_ratio_name:
-                st.session_state['vid_width'] = default_width
-                st.session_state['vid_height'] = default_height
-                st.session_state['last_vid_aspect_ratio_name'] = selected_aspect_ratio_name
+            if platform != "Custom":
+                if st.session_state['last_vid_aspect_ratio_name'] != selected_aspect_ratio_name:
+                    st.session_state['vid_width'] = default_width
+                    st.session_state['vid_height'] = default_height
+                    st.session_state['last_vid_aspect_ratio_name'] = selected_aspect_ratio_name
+            else:
+                if st.session_state['last_vid_aspect_ratio_name'] != "Custom":
+                    st.session_state['vid_width'] = default_width
+                    st.session_state['vid_height'] = default_height
+                    st.session_state['last_vid_aspect_ratio_name'] = "Custom"
         
         vid_width = st.session_state['vid_width']
         vid_height = st.session_state['vid_height']
@@ -269,7 +274,12 @@ def video_uploader():
 
                 # Provide download link
                 with open(temp_video_path, 'rb') as f:
-                    st.download_button('Download Resized Video', f, file_name='resized_video.' + output_format)
+                    st.download_button(
+                        label='Download Resized Video', 
+                        data=f, 
+                        file_name='resized_video.' + output_format,
+                        mime=f'video/{output_format}'
+                    )
 
             except Exception as e:
                 st.error(f"An error occurred during video processing: {e}")
@@ -288,7 +298,7 @@ def subtitle_creation_mode():
     
     # Check for OpenAI API key in st.secrets
     if "OPENAI_API_KEY" in st.secrets:
-        openai.api_key = st.secrets["OPENAI_API_KEY"]
+        client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
     else:
         st.error("OpenAI API key not found in st.secrets. Please add it to your Streamlit secrets.")
         return
@@ -338,7 +348,7 @@ def subtitle_creation_mode():
             code = language_codes[language]
             st.write(f"Transcribing audio to {language}...")
             try:
-                subtitle_content = generate_subtitles(audio_file_path, code)
+                subtitle_content = generate_subtitles(audio_file_path, code, client)
                 st.write(f"Subtitles in {language} generated successfully.")
                 subtitles[language] = subtitle_content
             except Exception as e:
@@ -351,7 +361,12 @@ def subtitle_creation_mode():
         for language in subtitles:
             subtitle_content = subtitles[language]
             srt_filename = f"subtitles_{language}.srt"
-            st.download_button(f"Download {language} Subtitles (.srt)", subtitle_content, file_name=srt_filename)
+            st.download_button(
+                label=f"Download {language} Subtitles (.srt)", 
+                data=subtitle_content, 
+                file_name=srt_filename,
+                mime="text/plain"
+            )
         
         # Option to embed subtitles into the video
         st.write("### Embed Subtitles into Video")
@@ -365,7 +380,12 @@ def subtitle_creation_mode():
                 st.video(subtitled_video_path)
                 # Provide download button
                 with open(subtitled_video_path, 'rb') as f:
-                    st.download_button(f"Download Video with {language_to_embed} Subtitles", f, file_name=f"video_with_{language_to_embed}_subtitles.mp4")
+                    st.download_button(
+                        label=f"Download Video with {language_to_embed} Subtitles", 
+                        data=f, 
+                        file_name=f"video_with_{language_to_embed}_subtitles.mp4",
+                        mime="video/mp4"
+                    )
             except Exception as e:
                 st.error(f"Error embedding subtitles: {e}")
         else:
@@ -389,15 +409,21 @@ def extract_audio(video_file_path):
     audio.close()
     return audio_file.name
 
-def generate_subtitles(audio_file_path, language_code):
+def generate_subtitles(audio_file_path, language_code, client):
     with open(audio_file_path, 'rb') as audio_file:
-        response = openai.Audio.transcribe(
-            model="whisper-1",
+        response = client.embeddings.create(
+            input="Your text string goes here",
+            model="text-embedding-3-small"
+        )
+        # Note: Replace the above with the correct OpenAI API call for transcription
+        # As per the latest documentation, use the appropriate method
+        response = client.audio.transcriptions.create(
             file=audio_file,
+            model="whisper-1",
             response_format="srt",
             language=language_code
         )
-    return response  # The response contains the SRT content as text
+    return response['text']  # The response contains the SRT content as text
 
 def embed_subtitles_into_video(video_file_path, subtitle_content, language):
     # Save the subtitles to a .srt file
@@ -577,13 +603,16 @@ def process_scene(scene_filename, s3, s3_bucket_name, s3_region, client):
     frame_filename = extract_frame_from_scene(scene_filename)
     if frame_filename is None:
         return None
-    
-    # Generate caption using GPT-4o
-    caption = generate_caption(frame_filename, client)
-    
+
+    # Upload the frame image to S3
+    frame_url = upload_file_to_s3(frame_filename, s3, s3_bucket_name, s3_region, folder='frames')
+
+    # Generate caption using GPT-4o with the frame URL
+    caption = generate_caption(frame_url, client)
+
     # Generate embedding using ADA embeddings model
     embedding = get_embedding(caption, client)
-    
+
     # Return scene data
     return {
         'scene_filename': scene_filename,
@@ -610,11 +639,30 @@ def extract_frame_from_scene(scene_filename):
 def upload_file_to_s3(file_path, s3, s3_bucket, s3_region, folder='files'):
     file_name = os.path.basename(file_path)
     s3_key = f"{folder}/{file_name}"
-    s3.upload_file(file_path, s3_bucket, s3_key, ExtraArgs={'ACL': 'public-read'})
+    # Determine content type based on file extension
+    _, ext = os.path.splitext(file_name)
+    content_type = 'application/octet-stream'
+    if ext.lower() in ['.jpg', '.jpeg']:
+        content_type = 'image/jpeg'
+    elif ext.lower() in ['.png']:
+        content_type = 'image/png'
+    elif ext.lower() in ['.mp4', '.mov', '.avi', '.mkv']:
+        content_type = 'video/mp4'
+    elif ext.lower() in ['.srt']:
+        content_type = 'text/plain'
+    s3.upload_file(
+        file_path, 
+        s3_bucket, 
+        s3_key, 
+        ExtraArgs={
+            'ACL': 'public-read',
+            'ContentType': content_type
+        }
+    )
     file_url = f"https://{s3_bucket}.s3.{s3_region}.amazonaws.com/{s3_key}"
     return file_url
 
-def generate_caption(image_path, client):
+def generate_caption(image_url, client):
     caption_system_prompt = '''
 You are an assistant that generates concise captions for images. These captions will be embedded and stored so 
 people can semantically search for scenes. Ensure your captions include:
@@ -627,7 +675,7 @@ people can semantically search for scenes. Ensure your captions include:
 - Describe the angle and depth of the images (e.g., zoomed in close-up, zoomed out, etc.)
 '''
 
-    # Generate caption using GPT-4o for the provided image path
+    # Generate caption using GPT-4o for the provided image URL
     completion = client.chat.completions.create(
         model="gpt-4o",
         messages=[
@@ -641,10 +689,15 @@ people can semantically search for scenes. Ensure your captions include:
                 "role": "user",
                 "content": [
                     {"type": "text", "text": "Generate a caption for this image:"},
-                    {"type": "image_url", "image_url": {"url": image_path}}
-                ]
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": image_url,
+                        }
+                    },
+                ],
             }
-        ]
+        ],
     )
 
     # Access the message content directly from 'choices'
@@ -652,12 +705,12 @@ people can semantically search for scenes. Ensure your captions include:
 
     return caption
 
-def get_embedding(value, client, model="text-embedding-3-large"):
+def get_embedding(value, client, model="text-embedding-3-small"):
     response = client.embeddings.create(
-        model=model,
-        input=value
+        input=value,
+        model=model
     )
-    return response.data[0].embedding
+    return response['data'][0]['embedding']
 
 def search_scenes(prompt, df_scenes, client, top_n=5):
     prompt_embedding = get_embedding(prompt, client)
