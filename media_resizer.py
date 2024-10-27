@@ -350,19 +350,22 @@ def video_uploader():
         # Link or unlink aspect ratio
         link_aspect = st.checkbox("Link Aspect Ratio", value=True)
 
-        # Initialize width and height based on original video dimensions
+        # Initialize width and height based on default dimensions
+        default_width = 1080  # Set a standard default width
+        default_height = int(default_width / aspect_ratio_value)
+
         if 'last_vid_aspect_ratio_name' not in st.session_state:
             st.session_state.last_vid_aspect_ratio_name = selected_aspect_ratio_name
-            vid_width = int(original_width)
-            vid_height = int(original_height)
+            vid_width = default_width
+            vid_height = default_height
         else:
             if st.session_state.last_vid_aspect_ratio_name != selected_aspect_ratio_name:
                 st.session_state.last_vid_aspect_ratio_name = selected_aspect_ratio_name
-                vid_width = int(original_width)
-                vid_height = int(vid_width / aspect_ratio_value)
+                vid_width = default_width
+                vid_height = default_height
             else:
-                vid_width = st.session_state.get('vid_width', int(original_width))
-                vid_height = st.session_state.get('vid_height', int(original_height))
+                vid_width = st.session_state.get('vid_width', default_width)
+                vid_height = st.session_state.get('vid_height', default_height)
 
         # Input fields
         col1, col2 = st.columns(2)
