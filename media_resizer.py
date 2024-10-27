@@ -18,6 +18,10 @@ from transformers import BlipProcessor, BlipForConditionalGeneration
 import torch
 from openai import OpenAI
 
+# Initialize OpenAI client
+client = OpenAI()
+
+
 def main():
     st.title("Media Resizer, Converter, and Scene Search")
     st.write("Upload a video file to resize, convert, add subtitles, or search scenes based on prompts.")
