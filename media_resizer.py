@@ -710,7 +710,7 @@ def get_embedding(value, client, model="text-embedding-3-small"):
         input=value,
         model=model
     )
-    return response['data'][0]['embedding']
+    return response.data[0].embedding
 
 def search_scenes(prompt, df_scenes, client, top_n=5):
     prompt_embedding = get_embedding(prompt, client)
