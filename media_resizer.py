@@ -169,20 +169,20 @@ def video_uploader():
         tfile.write(uploaded_video.read())
         tfile.flush()
         st.video(tfile.name)
-
+    
         st.write("### Resize Options")
         resolution = st.selectbox("Resolution", ["1920x1080", "1280x720", "854x480", "640x360"])
         output_format = st.selectbox("Output Format", ["mp4", "avi", "mov", "mkv"])
-
+    
         if st.button("Resize and Convert Video"):
             try:
                 clip = mp.VideoFileClip(tfile.name)
                 width, height = map(int, resolution.split('x'))
-
+    
                 # Maintain aspect ratio and add padding
                 original_aspect = clip.w / clip.h
                 new_aspect = width / height
-
+    
                 if original_aspect > new_aspect:
                     resized_clip = clip.resize(width=width)
                     pad_height = max((height - resized_clip.h) / 2, 0)
@@ -191,13 +191,15 @@ def video_uploader():
                     resized_clip = clip.resize(height=height)
                     pad_width = max((width - resized_clip.w) / 2, 0)
                     resized_clip = margin(resized_clip, left=int(pad_width), right=int(pad_width), color=(0, 0, 0))
-
+    
                 # Ensure the final clip has the desired dimensions
                 resized_clip = resized_clip.resize(newsize=(width, height))
-
+    
                 # Save to a temporary file
                 temp_video_file = tempfile.NamedTemporaryFile(delete=False, suffix='.' + output_format)
-
+                temp_video_path = temp_video_file.name
+                temp_video_file.close()  # Close the file so MoviePy can write to it
+    
                 # Determine the audio codec based on the output format
                 if output_format == 'mp4':
                     video_codec = 'libx264'
@@ -214,22 +216,29 @@ def video_uploader():
                 else:
                     video_codec = 'libx264'
                     audio_codec = 'aac'
-
+    
                 # Use faster encoding preset and other optimizations
                 ffmpeg_params = ['-preset', 'ultrafast', '-ac', '2']
                 resized_clip.write_videofile(
-                    temp_video_file.name,
+                    temp_video_path,
                     codec=video_codec,
                     audio_codec=audio_codec,
                     audio=True,
                     threads=4,  # Adjust based on your CPU
-                    ffmpeg_params=ffmpeg_params
+                    ffmpeg_params=ffmpeg_params,
+                    logger=None  # Suppress verbose output
                 )
-
+    
+                # Display the resized video
+                st.write("### Resized Video Preview")
+                st.video(temp_video_path)
+    
                 # Provide download link
-                with open(temp_video_file.name, 'rb') as f:
-                    st.download_button('Download Video', f, file_name='resized_video.' + output_format)
-                os.unlink(temp_video_file.name)
+                with open(temp_video_path, 'rb') as f:
+                    st.download_button('Download Resized Video', f, file_name='resized_video.' + output_format)
+    
+                # Clean up temporary files
+                os.unlink(temp_video_path)
                 os.unlink(tfile.name)
             except Exception as e:
                 st.error(f"An error occurred during video processing: {e}")
