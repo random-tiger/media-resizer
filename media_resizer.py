@@ -14,13 +14,7 @@ from scenedetect.detectors import ContentDetector
 import concurrent.futures
 from moviepy.video.fx.all import margin
 from PIL import Image
-from transformers import BlipProcessor, BlipForConditionalGeneration
-import torch
 from openai import OpenAI
-
-# Initialize OpenAI client
-client = OpenAI()
-
 
 def main():
     st.title("Media Resizer, Converter, and Scene Search")
@@ -490,12 +484,6 @@ def scene_search_mode():
             st.error(f"Error extracting scenes: {e}")
             return
         
-        # Load the image captioning model
-        st.write("Loading image captioning model...")
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-        model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base").to(device)
-        
         # Process scenes
         st.write("Processing scenes...")
         scene_data_list = []
@@ -504,7 +492,7 @@ def scene_search_mode():
         
         # Process scenes sequentially to manage resource usage
         for idx, scene_filename in enumerate(scene_list):
-            data = process_scene(scene_filename, s3, s3_bucket_name, s3_region, processor, model, device, client)
+            data = process_scene(scene_filename, s3, s3_bucket_name, s3_region, client)
             if data:
                 scene_data_list.append(data)
             progress_bar.progress((idx + 1) / total_scenes)
@@ -581,19 +569,19 @@ def extract_scenes(video_path):
             scene_filenames.append(output_filepath)
         return scene_filenames
 
-def process_scene(scene_filename, s3, s3_bucket_name, s3_region, processor, model, device, client):
+def process_scene(scene_filename, s3, s3_bucket_name, s3_region, client):
     # Upload scene clip to S3 and get the URL
     scene_url = upload_file_to_s3(scene_filename, s3, s3_bucket_name, s3_region, folder='scenes')
-    
+
     # Extract a frame from the scene
     frame_filename = extract_frame_from_scene(scene_filename)
     if frame_filename is None:
         return None
     
-    # Generate caption using the image
-    caption = generate_caption(frame_filename, processor, model, device, client)
+    # Generate caption using GPT-4o
+    caption = generate_caption(frame_filename, client)
     
-    # Generate embedding
+    # Generate embedding using ADA embeddings model
     embedding = get_embedding(caption, client)
     
     # Return scene data
@@ -626,7 +614,7 @@ def upload_file_to_s3(file_path, s3, s3_bucket, s3_region, folder='files'):
     file_url = f"https://{s3_bucket}.s3.{s3_region}.amazonaws.com/{s3_key}"
     return file_url
 
-def generate_caption(image_path, processor, model, device, client):
+def generate_caption(image_path, client):
     caption_system_prompt = '''
 You are an assistant that generates concise captions for images. These captions will be embedded and stored so 
 people can semantically search for scenes. Ensure your captions include:
@@ -638,16 +626,9 @@ people can semantically search for scenes. Ensure your captions include:
 - Describe the quality of the image and suitability for promotional material
 - Describe the angle and depth of the images (e.g., zoomed in close-up, zoomed out, etc.)
 '''
-    # Generate initial caption using BLIP
-    image = Image.open(image_path).convert('RGB')
-    inputs = processor(images=image, return_tensors="pt").to(device)
-    with torch.no_grad():
-        generated_ids = model.generate(**inputs, max_length=50)
-    initial_caption = processor.decode(generated_ids[0], skip_special_tokens=True)
-    
-    # Refine caption using OpenAI GPT-3.5 Turbo (text only) via client
+    # Generate caption using GPT-4o
     completion = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4o",
         messages=[
             {
                 "role": "system",
@@ -655,16 +636,14 @@ people can semantically search for scenes. Ensure your captions include:
             },
             {
                 "role": "user",
-                "content": f"Refine the following caption:\n\n{initial_caption}"
+                "content": f"Generate a caption for this image: {image_path}"
             }
-        ],
-        max_tokens=150,
-        temperature=0.5
+        ]
     )
-    refined_caption = completion.choices[0].message.content.strip()
-    return refined_caption
+    caption = completion.choices[0].message['content'].strip()
+    return caption
 
-def get_embedding(value, client, model="text-embedding-ada-002"):
+def get_embedding(value, client, model="text-embedding-3-large"):
     response = client.embeddings.create(
         model=model,
         input=value
