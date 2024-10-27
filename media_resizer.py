@@ -258,7 +258,7 @@ def video_uploader():
                     codec=video_codec,
                     audio_codec=audio_codec,
                     audio=True,
-                    threads=12,  # Adjust based on your CPU
+                    threads=6,  # Adjust based on your CPU
                     ffmpeg_params=ffmpeg_params,
                     logger=None  # Suppress verbose output
                 )
@@ -488,7 +488,7 @@ def scene_search_mode():
         total_scenes = len(scene_list)
         
         # Process scenes in parallel
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
             futures = []
             for idx, scene_filename in enumerate(scene_list):
                 futures.append(
