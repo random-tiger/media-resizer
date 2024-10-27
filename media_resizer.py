@@ -131,9 +131,10 @@ def resize_image(image):
     # Input fields
     col1, col2 = st.columns(2)
     with col1:
-        st.session_state.width = st.number_input("Width (pixels)", min_value=1, value=st.session_state.width, key='width')
+        st.number_input("Width (pixels)", min_value=1, value=st.session_state.width, key='width')
     with col2:
-        if link_aspect and (platform != 'Custom' or selected_common_aspect_ratio != 'Custom'):
+        st.number_input("Height (pixels)", min_value=1, value=st.session_state.height, key='height')
+
             # Height is calculated
             st.session_state.height = int(st.session_state.width / aspect_ratio_value)
             st.markdown(f"**Height (pixels): {st.session_state.height}**")
@@ -358,9 +359,10 @@ def video_uploader():
         # Input fields
         col1, col2 = st.columns(2)
         with col1:
-            st.session_state.vid_width = st.number_input("Width (pixels)", min_value=1, value=st.session_state.vid_width, key='vid_width')
+            st.number_input("Width (pixels)", min_value=1, value=st.session_state.vid_width, key='vid_width')
         with col2:
-            st.session_state.vid_height = st.number_input("Height (pixels)", min_value=1, value=st.session_state.vid_height, key='vid_height')
+            st.number_input("Height (pixels)", min_value=1, value=st.session_state.vid_height, key='vid_height')
+
 
         # Detect changes and update other dimension if aspect ratio is linked
         if link_aspect:
