@@ -5,3 +5,13 @@ streamlit-cropper
 opencv-python-headless
 numpy
 openai==0.28
+opencv-python
+pandas
+boto3
+scikit-learn
+scenedetect
+moviepy
+python-dotenv
+ipython
+ipywidgets
+ffmpeg
