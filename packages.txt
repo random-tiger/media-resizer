@@ -1,4 +1,6 @@
 ffmpeg
+libx264-dev
+libavcodec-extra
 libjpeg-dev
 zlib1g-dev
 libpng-dev
