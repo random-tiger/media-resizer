@@ -2,7 +2,6 @@ import streamlit as st
 import moviepy.editor as mp
 import tempfile
 import os
-import openai
 import subprocess
 import platform
 import boto3
@@ -10,11 +9,14 @@ import cv2
 import numpy as np
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
-from scenedetect import VideoManager, SceneManager
+from scenedetect import open_video, SceneManager
 from scenedetect.detectors import ContentDetector
 import concurrent.futures
 from moviepy.video.fx.all import margin
 from PIL import Image
+from transformers import BlipProcessor, BlipForConditionalGeneration
+import torch
+from openai import OpenAI
 
 def main():
     st.title("Media Resizer, Converter, and Scene Search")
@@ -31,7 +33,7 @@ def main():
         subtitle_creation_mode()
     elif operation_mode == "Scene Search":
         scene_search_mode()
-
+        
 def video_uploader():
     uploaded_video = st.file_uploader("Choose a video file", type=["mp4", "avi", "mov", "mkv"])
     if uploaded_video is not None:
@@ -448,7 +450,7 @@ def scene_search_mode():
         aws_secret_access_key = st.secrets["AWS_SECRET_ACCESS_KEY"]
         s3_bucket_name = st.secrets["AWS_S3_BUCKET_NAME"]
         s3_region = st.secrets.get("AWS_REGION", "us-east-1")
-        openai.api_key = st.secrets["OPENAI_API_KEY"]
+        openai_api_key = st.secrets["OPENAI_API_KEY"]
     else:
         st.error("AWS credentials or OpenAI API key not found in st.secrets. Please add them to your Streamlit secrets.")
         return
@@ -460,6 +462,9 @@ def scene_search_mode():
         aws_access_key_id=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key
     )
+    
+    # Initialize OpenAI client
+    client = OpenAI(api_key=openai_api_key)
     
     # Prompt user to upload a video file
     uploaded_video = st.file_uploader("Upload a video file for scene search", type=["mp4", "avi", "mov", "mkv"])
@@ -481,26 +486,24 @@ def scene_search_mode():
             st.error(f"Error extracting scenes: {e}")
             return
         
+        # Load the image captioning model
+        st.write("Loading image captioning model...")
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+        model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base").to(device)
+        
         # Process scenes
         st.write("Processing scenes...")
         scene_data_list = []
         progress_bar = st.progress(0)
         total_scenes = len(scene_list)
         
-        # Process scenes in parallel
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            futures = []
-            for idx, scene_filename in enumerate(scene_list):
-                futures.append(
-                    executor.submit(
-                        process_scene, scene_filename, s3, s3_bucket_name, s3_region
-                    )
-                )
-            for idx, future in enumerate(concurrent.futures.as_completed(futures)):
-                data = future.result()
-                if data:
-                    scene_data_list.append(data)
-                progress_bar.progress((idx + 1) / total_scenes)
+        # Process scenes sequentially to manage resource usage
+        for idx, scene_filename in enumerate(scene_list):
+            data = process_scene(scene_filename, s3, s3_bucket_name, s3_region, processor, model, device, client)
+            if data:
+                scene_data_list.append(data)
+            progress_bar.progress((idx + 1) / total_scenes)
         
         if not scene_data_list:
             st.error("No scenes were processed successfully.")
@@ -514,7 +517,7 @@ def scene_search_mode():
         prompt = st.text_input("Enter a prompt to search for scenes:")
         if prompt:
             # Search for relevant scenes
-            results = search_scenes(prompt, df_scenes)
+            results = search_scenes(prompt, df_scenes, client)
             
             if results.empty:
                 st.write("No matching scenes found.")
@@ -538,23 +541,22 @@ def extract_scenes(video_path):
     # Use PySceneDetect to detect scenes
     scene_list = []
     try:
-        video_manager = VideoManager([video_path])
+        video = open_video(video_path)
         scene_manager = SceneManager()
-        scene_manager.add_detector(ContentDetector())
-        video_manager.start()
-        scene_manager.detect_scenes(frame_source=video_manager)
-        scene_list = scene_manager.get_scene_list()
+        scene_manager.add_detector(ContentDetector(threshold=30.0))  # Adjust threshold as needed
+        scene_manager.detect_scenes(video)
+        scene_list_data = scene_manager.get_scene_list()
     except Exception as e:
         st.error(f"Error during scene detection: {e}")
-    finally:
-        video_manager.release()
-    if not scene_list:
+        return []
+    
+    if not scene_list_data:
         st.warning("No scenes were detected.")
         return []
     else:
         # Save each scene as a separate video file
         scene_filenames = []
-        for i, scene in enumerate(scene_list):
+        for i, scene in enumerate(scene_list_data):
             start_time = scene[0].get_seconds()
             end_time = scene[1].get_seconds()
             if end_time - start_time < 0.5:
@@ -575,7 +577,7 @@ def extract_scenes(video_path):
             scene_filenames.append(output_filepath)
         return scene_filenames
 
-def process_scene(scene_filename, s3, s3_bucket_name, s3_region):
+def process_scene(scene_filename, s3, s3_bucket_name, s3_region, processor, model, device, client):
     # Upload scene clip to S3 and get the URL
     scene_url = upload_file_to_s3(scene_filename, s3, s3_bucket_name, s3_region, folder='scenes')
     
@@ -584,20 +586,16 @@ def process_scene(scene_filename, s3, s3_bucket_name, s3_region):
     if frame_filename is None:
         return None
     
-    # Upload the frame to S3 and get the URL
-    image_url = upload_file_to_s3(frame_filename, s3, s3_bucket_name, s3_region, folder='frames')
-    
-    # Generate caption using the image URL
-    caption = generate_caption(image_url)
+    # Generate caption using the image
+    caption = generate_caption(frame_filename, processor, model, device, client)
     
     # Generate embedding
-    embedding = get_embedding(caption)
+    embedding = get_embedding(caption, client)
     
     # Return scene data
     return {
         'scene_filename': scene_filename,
         'scene_url': scene_url,
-        'image_url': image_url,
         'caption': caption,
         'embedding': embedding
     }
@@ -624,7 +622,7 @@ def upload_file_to_s3(file_path, s3, s3_bucket, s3_region, folder='files'):
     file_url = f"https://{s3_bucket}.s3.{s3_region}.amazonaws.com/{s3_key}"
     return file_url
 
-def generate_caption(image_url):
+def generate_caption(image_path, processor, model, device, client):
     caption_system_prompt = '''
 You are an assistant that generates concise captions for images. These captions will be embedded and stored so 
 people can semantically search for scenes. Ensure your captions include:
@@ -636,8 +634,15 @@ people can semantically search for scenes. Ensure your captions include:
 - Describe the quality of the image and suitability for promotional material
 - Describe the angle and depth of the images (e.g., zoomed in close-up, zoomed out, etc.)
 '''
-
-    response = openai.ChatCompletion.create(
+    # Generate initial caption using BLIP
+    image = Image.open(image_path).convert('RGB')
+    inputs = processor(images=image, return_tensors="pt").to(device)
+    with torch.no_grad():
+        generated_ids = model.generate(**inputs, max_length=50)
+    initial_caption = processor.decode(generated_ids[0], skip_special_tokens=True)
+    
+    # Refine caption using OpenAI GPT-3.5 Turbo (text only) via client
+    completion = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {
@@ -646,29 +651,24 @@ people can semantically search for scenes. Ensure your captions include:
             },
             {
                 "role": "user",
-                "content": "",
-                "function_call": {
-                    "name": "generate_caption",
-                    "arguments": {
-                        "image_url": image_url
-                    }
-                }
+                "content": f"Refine the following caption:\n\n{initial_caption}"
             }
         ],
-        max_tokens=300,
-        temperature=0.2
+        max_tokens=150,
+        temperature=0.5
     )
-    return response['choices'][0]['message']['content']
+    refined_caption = completion.choices[0].message.content.strip()
+    return refined_caption
 
-def get_embedding(value, model="text-embedding-ada-002"):
-    response = openai.Embedding.create(
+def get_embedding(value, client, model="text-embedding-ada-002"):
+    response = client.embeddings.create(
         model=model,
         input=value
     )
-    return response['data'][0]['embedding']
+    return response.data[0].embedding
 
-def search_scenes(prompt, df_scenes, top_n=5):
-    prompt_embedding = get_embedding(prompt)
+def search_scenes(prompt, df_scenes, client, top_n=5):
+    prompt_embedding = get_embedding(prompt, client)
     df_scenes['similarity'] = df_scenes['embedding'].apply(
         lambda x: cosine_similarity([x], [prompt_embedding])[0][0]
     )
