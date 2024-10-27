@@ -34,88 +34,142 @@ def image_uploader():
 def resize_image(image):
     st.write("### Resize Options")
 
-    # Define platforms and use cases
-    platforms = ["Instagram", "Facebook", "Youtube", "Twitter", "Snapchat", "Linkedin", "Pinterest", "Custom"]
+    # Define platforms and their aspect ratios
+    platforms = ["Instagram", "Facebook", "YouTube", "Twitter", "Snapchat", "LinkedIn", "Pinterest", "Custom"]
     platform = st.selectbox("Select Platform", platforms)
 
-    platform_use_cases = {
-        "Instagram": ["Feed Square", "Feed Vertical", "Feed Full Portrait", "Stories"],
-        "Facebook": ["Feed Horizontal", "Feed Square", "Feed Vertical", "Feed Full Portrait", "Cover", "Stories", "Instant Articles Horizontal", "Instant Articles Square", "Instant Articles Vertical", "Instant Articles Full Portrait"],
-        "Youtube": ["Feed Horizontal", "In-Stream"],
-        "Twitter": ["Feed Horizontal", "Feed Square", "Feed Vertical"],
-        "Snapchat": ["Stories"],
-        "Linkedin": ["Feed Horizontal", "Feed Square", "Feed Vertical"],
-        "Pinterest": ["Feed Square", "Feed Vertical", "Feed Full Portrait"],
-        "Custom": ["Custom"],
+    # Aspect ratios for each platform
+    platform_aspect_ratios = {
+        "Instagram": {
+            "Feed Landscape": (16, 9),
+            "Feed Square": (1, 1),
+            "Feed Portrait": (4, 5),
+            "Stories": (9, 16),
+            "IGTV": (9, 16),
+            "Ads Landscape": (16, 9),
+            "Ads Square": (1, 1),
+            "Ads Portrait": (4, 5),
+        },
+        "Facebook": {
+            "Feed Landscape": (16, 9),
+            "Feed Square": (1, 1),
+            "Feed Portrait": (4, 5),
+            "Stories": (9, 16),
+            "Cover": (16, 9),
+            "Ads Landscape": (16, 9),
+            "Ads Square": (1, 1),
+            "Ads Portrait": (4, 5),
+        },
+        "YouTube": {
+            "Standard": (16, 9),
+        },
+        "Twitter": {
+            "Feed Landscape": (16, 9),
+            "Feed Square": (1, 1),
+            "Feed Portrait": (4, 5),
+        },
+        "Snapchat": {
+            "Stories": (9, 16),
+        },
+        "LinkedIn": {
+            "Feed Landscape": (16, 9),
+            "Feed Square": (1, 1),
+            "Feed Portrait": (4, 5),
+        },
+        "Pinterest": {
+            "Standard Pin": (2, 3),
+            "Square Pin": (1, 1),
+            "Long Pin": (1, 2.1),
+        },
+        "Custom": {},
     }
 
-    use_cases = platform_use_cases.get(platform, [])
-    use_case = st.selectbox("Select Use Case", use_cases)
-
-    aspect_ratios = {
-        "Feed Horizontal": (16, 9),
-        "Feed Square": (1, 1),
-        "Feed Vertical": (4, 5),
-        "Feed Full Portrait": (9, 16),
-        "Cover": (16, 9),
-        "In-Stream": (16, 9),
-        "Stories": (9, 16),
-        "Instant Articles Horizontal": (16, 9),
-        "Instant Articles Square": (1, 1),
-        "Instant Articles Vertical": (4, 5),
-        "Instant Articles Full Portrait": (9, 16),
-        "Custom": None,
-    }
-
-    if use_case == "Custom":
-        # Allow user to input custom dimensions
-        custom_width = st.number_input("Custom Width (pixels)", min_value=1, value=1080)
-        custom_height = st.number_input("Custom Height (pixels)", min_value=1, value=1920)
-        desired_width = custom_width
-        desired_height = custom_height
+    if platform != "Custom":
+        aspect_ratio_dict = platform_aspect_ratios.get(platform, {})
+        aspect_ratio_names = list(aspect_ratio_dict.keys())
+        selected_aspect_ratio_name = st.selectbox("Select Aspect Ratio", aspect_ratio_names)
+        aspect_ratio = aspect_ratio_dict[selected_aspect_ratio_name]
     else:
-        aspect_ratio = aspect_ratios.get(use_case, None)
-        if aspect_ratio is None:
-            st.error("Invalid aspect ratio selected.")
-            return
+        # Custom platform
+        common_aspect_ratios = {
+            "16:9": (16, 9),
+            "4:3": (4, 3),
+            "1:1": (1, 1),
+            "4:5": (4, 5),
+            "9:16": (9, 16),
+            "Custom": "Custom"
+        }
+        selected_common_aspect_ratio = st.selectbox("Select Aspect Ratio", list(common_aspect_ratios.keys()))
+        if selected_common_aspect_ratio != "Custom":
+            aspect_ratio = common_aspect_ratios[selected_common_aspect_ratio]
+        else:
+            # User inputs custom aspect ratio
+            custom_width = st.number_input("Aspect Ratio Width", min_value=1, value=16)
+            custom_height = st.number_input("Aspect Ratio Height", min_value=1, value=9)
+            aspect_ratio = (custom_width, custom_height)
 
-        desired_width = st.number_input("Desired Width (pixels)", min_value=1, value=1080)
-        desired_height = int(desired_width * aspect_ratio[1] / aspect_ratio[0])
+    # Aspect ratio value
+    aspect_ratio_value = aspect_ratio[0] / aspect_ratio[1]
 
-    st.write(f"Calculated Height: {desired_height} pixels")
+    # Link or unlink aspect ratio
+    link_aspect = st.checkbox("Link Aspect Ratio", value=True)
 
-    # Option to choose resize method
+    # Width and Height inputs
+    if 'width' not in st.session_state:
+        st.session_state.width = 1080
+    if 'height' not in st.session_state:
+        st.session_state.height = int(st.session_state.width / aspect_ratio_value)
+
+    # Callbacks to update dimensions
+    def update_width():
+        if link_aspect:
+            st.session_state.height = int(st.session_state.width / aspect_ratio_value)
+
+    def update_height():
+        if link_aspect:
+            st.session_state.width = int(st.session_state.height * aspect_ratio_value)
+
+    # Input fields
+    st.number_input("Width (pixels)", min_value=1, key='width', on_change=update_width)
+    st.number_input("Height (pixels)", min_value=1, key='height', on_change=update_height)
+
+    # Resize method
     resize_method = st.radio("Select Resize Method", ["Crop", "Pad (Add borders)"])
 
     output_format = st.selectbox("Output Format", ["JPEG", "PNG", "BMP", "GIF"])
 
-    # Resize the image while maintaining aspect ratio
+    # Resize image
     img_aspect_ratio = image.width / image.height
-    target_aspect_ratio = desired_width / desired_height
+    target_aspect_ratio = st.session_state.width / st.session_state.height
 
     if img_aspect_ratio > target_aspect_ratio:
-        # Image is wider than target aspect ratio
-        scale_factor = desired_height / image.height
+        # Image is wider
+        scale_factor = st.session_state.height / image.height
     else:
-        # Image is taller than target aspect ratio
-        scale_factor = desired_width / image.width
+        # Image is taller
+        scale_factor = st.session_state.width / image.width
 
     new_width = int(image.width * scale_factor)
     new_height = int(image.height * scale_factor)
     resized_image = image.resize((new_width, new_height), Image.ANTIALIAS)
 
     if resize_method == "Crop":
-        # Crop the image to the desired dimensions
-        left = (new_width - desired_width) / 2
-        top = (new_height - desired_height) / 2
-        right = (new_width + desired_width) / 2
-        bottom = (new_height + desired_height) / 2
+        # Crop to desired dimensions
+        left = (new_width - st.session_state.width) / 2
+        top = (new_height - st.session_state.height) / 2
+        right = (new_width + st.session_state.width) / 2
+        bottom = (new_height + st.session_state.height) / 2
         final_image = resized_image.crop((left, top, right, bottom))
     else:
-        # Pad the image to the desired dimensions
-        delta_width = desired_width - new_width
-        delta_height = desired_height - new_height
-        padding = (delta_width // 2, delta_height // 2, delta_width - (delta_width // 2), delta_height - (delta_height // 2))
+        # Pad to desired dimensions
+        delta_width = st.session_state.width - new_width
+        delta_height = st.session_state.height - new_height
+        padding = (
+            delta_width // 2,
+            delta_height // 2,
+            delta_width - (delta_width // 2),
+            delta_height - (delta_height // 2)
+        )
         final_image = ImageOps.expand(resized_image, padding, fill=(0, 0, 0))
 
     st.image(final_image, caption='Preview of Resized Image', use_column_width=True)
@@ -147,17 +201,25 @@ def crop_image(image):
     aspect_ratio = aspect_ratios[aspect_ratio_option]
 
     if aspect_ratio == "Custom":
-        custom_width = st.number_input("Aspect Ratio Width", min_value=1, value=1)
-        custom_height = st.number_input("Aspect Ratio Height", min_value=1, value=1)
-        aspect_ratio = (custom_width, custom_height)
+        custom_width = st.number_input("Aspect Ratio Width", min_value=1, value=16)
+        custom_height = st.number_input("Aspect Ratio Height", min_value=1, value=9)
+        aspect_ratio_value = custom_width / custom_height
+    elif aspect_ratio is not None:
+        aspect_ratio_value = aspect_ratio[0] / aspect_ratio[1]
+    else:
+        aspect_ratio_value = None
 
     # Get cropping coordinates using st_cropper
     realtime_update = st.checkbox("Update in Real Time", value=True)
     box_color = st.color_picker("Box Color", "#0000FF")
-    aspect_ratio_value = None if aspect_ratio is None else aspect_ratio[0] / aspect_ratio[1]
 
     # Perform cropping
-    cropped_image = st_cropper(image, realtime_update=realtime_update, box_color=box_color, aspect_ratio=aspect_ratio_value)
+    cropped_image = st_cropper(
+        image,
+        realtime_update=realtime_update,
+        box_color=box_color,
+        aspect_ratio=aspect_ratio_value
+    )
     st.write("Preview")
     st.image(cropped_image, use_column_width=True)
 
@@ -184,57 +246,105 @@ def video_uploader():
 
         st.write("### Resize Options")
 
-        # Define platforms and use cases
-        platforms = ["Instagram", "Facebook", "Youtube", "Twitter", "Snapchat", "Linkedin", "Pinterest", "Custom"]
+        # Define platforms and their aspect ratios
+        platforms = ["Instagram", "Facebook", "YouTube", "Twitter", "Snapchat", "LinkedIn", "Pinterest", "Custom"]
         platform = st.selectbox("Select Platform", platforms)
 
-        platform_use_cases = {
-            "Instagram": ["Feed Square", "Feed Vertical", "Feed Full Portrait", "Stories"],
-            "Facebook": ["Feed Horizontal", "Feed Square", "Feed Vertical", "Feed Full Portrait", "Cover", "Stories", "Instant Articles Horizontal", "Instant Articles Square", "Instant Articles Vertical", "Instant Articles Full Portrait"],
-            "Youtube": ["Feed Horizontal", "In-Stream"],
-            "Twitter": ["Feed Horizontal", "Feed Square", "Feed Vertical"],
-            "Snapchat": ["Stories"],
-            "Linkedin": ["Feed Horizontal", "Feed Square", "Feed Vertical"],
-            "Pinterest": ["Feed Square", "Feed Vertical", "Feed Full Portrait"],
-            "Custom": ["Custom"],
+        platform_aspect_ratios = {
+            "Instagram": {
+                "Feed Landscape": (16, 9),
+                "Feed Square": (1, 1),
+                "Feed Portrait": (4, 5),
+                "Stories": (9, 16),
+                "IGTV": (9, 16),
+                "Ads Landscape": (16, 9),
+                "Ads Square": (1, 1),
+                "Ads Portrait": (4, 5),
+            },
+            "Facebook": {
+                "Feed Landscape": (16, 9),
+                "Feed Square": (1, 1),
+                "Feed Portrait": (4, 5),
+                "Stories": (9, 16),
+                "Cover": (16, 9),
+                "Ads Landscape": (16, 9),
+                "Ads Square": (1, 1),
+                "Ads Portrait": (4, 5),
+            },
+            "YouTube": {
+                "Standard": (16, 9),
+            },
+            "Twitter": {
+                "Feed Landscape": (16, 9),
+                "Feed Square": (1, 1),
+                "Feed Portrait": (4, 5),
+            },
+            "Snapchat": {
+                "Stories": (9, 16),
+            },
+            "LinkedIn": {
+                "Feed Landscape": (16, 9),
+                "Feed Square": (1, 1),
+                "Feed Portrait": (4, 5),
+            },
+            "Pinterest": {
+                "Standard Pin": (2, 3),
+                "Square Pin": (1, 1),
+                "Long Pin": (1, 2.1),
+            },
+            "Custom": {},
         }
 
-        use_cases = platform_use_cases.get(platform, [])
-        use_case = st.selectbox("Select Use Case", use_cases)
-
-        aspect_ratios = {
-            "Feed Horizontal": (16, 9),
-            "Feed Square": (1, 1),
-            "Feed Vertical": (4, 5),
-            "Feed Full Portrait": (9, 16),
-            "Cover": (16, 9),
-            "In-Stream": (16, 9),
-            "Stories": (9, 16),
-            "Instant Articles Horizontal": (16, 9),
-            "Instant Articles Square": (1, 1),
-            "Instant Articles Vertical": (4, 5),
-            "Instant Articles Full Portrait": (9, 16),
-            "Custom": None,
-        }
-
-        if use_case == "Custom":
-            # Allow user to input custom dimensions
-            custom_width = st.number_input("Custom Width (pixels)", min_value=1, value=1080)
-            custom_height = st.number_input("Custom Height (pixels)", min_value=1, value=1920)
-            desired_width = custom_width
-            desired_height = custom_height
+        if platform != "Custom":
+            aspect_ratio_dict = platform_aspect_ratios.get(platform, {})
+            aspect_ratio_names = list(aspect_ratio_dict.keys())
+            selected_aspect_ratio_name = st.selectbox("Select Aspect Ratio", aspect_ratio_names)
+            aspect_ratio = aspect_ratio_dict[selected_aspect_ratio_name]
         else:
-            aspect_ratio = aspect_ratios.get(use_case, None)
-            if aspect_ratio is None:
-                st.error("Invalid aspect ratio selected.")
-                return
+            # Custom platform
+            common_aspect_ratios = {
+                "16:9": (16, 9),
+                "4:3": (4, 3),
+                "1:1": (1, 1),
+                "4:5": (4, 5),
+                "9:16": (9, 16),
+                "Custom": "Custom"
+            }
+            selected_common_aspect_ratio = st.selectbox("Select Aspect Ratio", list(common_aspect_ratios.keys()))
+            if selected_common_aspect_ratio != "Custom":
+                aspect_ratio = common_aspect_ratios[selected_common_aspect_ratio]
+            else:
+                # User inputs custom aspect ratio
+                custom_width = st.number_input("Aspect Ratio Width", min_value=1, value=16)
+                custom_height = st.number_input("Aspect Ratio Height", min_value=1, value=9)
+                aspect_ratio = (custom_width, custom_height)
 
-            desired_width = st.number_input("Desired Width (pixels)", min_value=1, value=1080)
-            desired_height = int(desired_width * aspect_ratio[1] / aspect_ratio[0])
+        # Aspect ratio value
+        aspect_ratio_value = aspect_ratio[0] / aspect_ratio[1]
 
-        st.write(f"Calculated Height: {desired_height} pixels")
+        # Link or unlink aspect ratio
+        link_aspect = st.checkbox("Link Aspect Ratio", value=True)
 
-        # Option to choose resize method
+        # Width and Height inputs
+        if 'vid_width' not in st.session_state:
+            st.session_state.vid_width = 1080
+        if 'vid_height' not in st.session_state:
+            st.session_state.vid_height = int(st.session_state.vid_width / aspect_ratio_value)
+
+        # Callbacks to update dimensions
+        def update_vid_width():
+            if link_aspect:
+                st.session_state.vid_height = int(st.session_state.vid_width / aspect_ratio_value)
+
+        def update_vid_height():
+            if link_aspect:
+                st.session_state.vid_width = int(st.session_state.vid_height * aspect_ratio_value)
+
+        # Input fields
+        st.number_input("Width (pixels)", min_value=1, key='vid_width', on_change=update_vid_width)
+        st.number_input("Height (pixels)", min_value=1, key='vid_height', on_change=update_vid_height)
+
+        # Resize method
         resize_method = st.radio("Select Resize Method", ["Crop", "Pad (Add borders)"])
 
         output_format = st.selectbox("Output Format", ["mp4", "avi", "mov", "mkv"])
@@ -245,34 +355,38 @@ def video_uploader():
 
                 # Resize the clip while maintaining aspect ratio
                 clip_aspect_ratio = clip.w / clip.h
-                target_aspect_ratio = desired_width / desired_height
+                target_aspect_ratio = st.session_state.vid_width / st.session_state.vid_height
 
                 if clip_aspect_ratio > target_aspect_ratio:
-                    # Video is wider than target aspect ratio
-                    new_height = desired_height
-                    new_width = int(clip.w * (desired_height / clip.h))
+                    # Video is wider
+                    new_height = st.session_state.vid_height
+                    new_width = int(clip.w * (st.session_state.vid_height / clip.h))
                 else:
-                    # Video is taller than target aspect ratio
-                    new_width = desired_width
-                    new_height = int(clip.h * (desired_width / clip.w))
+                    # Video is taller
+                    new_width = st.session_state.vid_width
+                    new_height = int(clip.h * (st.session_state.vid_width / clip.w))
 
                 resized_clip = clip.resize(newsize=(new_width, new_height))
 
                 if resize_method == "Crop":
-                    # Crop the clip to the desired dimensions
+                    # Crop to desired dimensions
                     x_center = new_width / 2
                     y_center = new_height / 2
-                    x1 = x_center - desired_width / 2
-                    y1 = y_center - desired_height / 2
-                    x2 = x_center + desired_width / 2
-                    y2 = y_center + desired_height / 2
+                    x1 = x_center - st.session_state.vid_width / 2
+                    y1 = y_center - st.session_state.vid_height / 2
+                    x2 = x_center + st.session_state.vid_width / 2
+                    y2 = y_center + st.session_state.vid_height / 2
 
-                    cropped_clip = resized_clip.crop(x1=max(0, x1), y1=max(0, y1), x2=min(new_width, x2), y2=min(new_height, y2))
-                    final_clip = cropped_clip
+                    final_clip = resized_clip.crop(
+                        x1=max(0, x1),
+                        y1=max(0, y1),
+                        x2=min(new_width, x2),
+                        y2=min(new_height, y2)
+                    )
                 else:
-                    # Pad the clip to the desired dimensions
-                    pad_width = desired_width - new_width
-                    pad_height = desired_height - new_height
+                    # Pad to desired dimensions
+                    pad_width = st.session_state.vid_width - new_width
+                    pad_height = st.session_state.vid_height - new_height
                     pad_left = int(pad_width / 2)
                     pad_right = pad_width - pad_left
                     pad_top = int(pad_height / 2)
