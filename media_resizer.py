@@ -393,11 +393,17 @@ def video_uploader():
                 target_width = vid_width
                 target_height = vid_height
 
-                # Calculate scaling factor
-                scale_factor_w = target_width / clip.w
-                scale_factor_h = target_height / clip.h
-
-                scale_factor = max(scale_factor_w, scale_factor_h)
+                # Calculate scaling factor differently based on resize method
+                if resize_method == "Crop":
+                    # For cropping, scale up to ensure dimensions are larger
+                    scale_factor_w = target_width / clip.w
+                    scale_factor_h = target_height / clip.h
+                    scale_factor = max(scale_factor_w, scale_factor_h)
+                else:
+                    # For padding, scale down to ensure dimensions are smaller
+                    scale_factor_w = target_width / clip.w
+                    scale_factor_h = target_height / clip.h
+                    scale_factor = min(scale_factor_w, scale_factor_h)
 
                 new_width = int(clip.w * scale_factor)
                 new_height = int(clip.h * scale_factor)
@@ -423,6 +429,8 @@ def video_uploader():
                     # Pad to desired dimensions
                     pad_width = target_width - new_width
                     pad_height = target_height - new_height
+
+                    # Ensure pad sizes are non-negative
                     pad_left = int(pad_width / 2)
                     pad_right = pad_width - pad_left
                     pad_top = int(pad_height / 2)
@@ -484,8 +492,10 @@ def video_uploader():
             finally:
                 # Clean up temporary files and release resources
                 clip.close()
-                os.unlink(temp_video_path)
-                os.unlink(tfile.name)
+                if os.path.exists(temp_video_path):
+                    os.unlink(temp_video_path)
+                if os.path.exists(tfile.name):
+                    os.unlink(tfile.name)
     else:
         st.write("Please upload a video file.")
 
