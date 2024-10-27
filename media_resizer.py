@@ -118,27 +118,34 @@ def resize_image(image):
     default_height = int(default_width / aspect_ratio_value)
 
     # Reset width and height when aspect ratio changes
-    if 'last_aspect_ratio' not in st.session_state:
-        st.session_state.last_aspect_ratio = aspect_ratio
-        st.session_state.width = default_width
-        st.session_state.height = default_height
+    if 'last_aspect_ratio_name' not in st.session_state:
+        st.session_state.last_aspect_ratio_name = selected_aspect_ratio_name
+        width = default_width
+        height = default_height
     else:
-        if st.session_state.last_aspect_ratio != aspect_ratio:
-            st.session_state.last_aspect_ratio = aspect_ratio
-            st.session_state.width = default_width
-            st.session_state.height = default_height
+        if st.session_state.last_aspect_ratio_name != selected_aspect_ratio_name:
+            st.session_state.last_aspect_ratio_name = selected_aspect_ratio_name
+            width = default_width
+            height = default_height
+        else:
+            # Use previous width and height from session_state, or defaults
+            width = st.session_state.get('width', default_width)
+            height = st.session_state.get('height', default_height)
 
     # Input fields
     col1, col2 = st.columns(2)
     with col1:
-        st.number_input("Width (pixels)", min_value=1, value=st.session_state.width, key='width')
+        width = st.number_input("Width (pixels)", min_value=1, value=width)
     with col2:
-        if link_aspect and (platform != 'Custom' or selected_common_aspect_ratio != 'Custom'):
-            # Height is calculated
-            st.session_state.height = int(st.session_state.width / aspect_ratio_value)
-            st.markdown(f"**Height (pixels): {st.session_state.height}**")
+        if link_aspect:
+            height = int(width / aspect_ratio_value)
+            st.markdown(f"**Height (pixels): {height}**")
         else:
-            st.number_input("Height (pixels)", min_value=1, value=st.session_state.height, key='height')
+            height = st.number_input("Height (pixels)", min_value=1, value=height)
+
+    # Update session_state
+    st.session_state['width'] = width
+    st.session_state['height'] = height
 
     # Resize method
     resize_method = st.radio("Select Resize Method", ["Crop", "Pad (Add borders)"])
@@ -147,14 +154,14 @@ def resize_image(image):
 
     # Resize image
     img_aspect_ratio = image.width / image.height
-    target_aspect_ratio = st.session_state.width / st.session_state.height
+    target_aspect_ratio = width / height
 
     if img_aspect_ratio > target_aspect_ratio:
         # Image is wider
-        scale_factor = st.session_state.height / image.height
+        scale_factor = height / image.height
     else:
         # Image is taller
-        scale_factor = st.session_state.width / image.width
+        scale_factor = width / image.width
 
     new_width = int(image.width * scale_factor)
     new_height = int(image.height * scale_factor)
@@ -162,15 +169,15 @@ def resize_image(image):
 
     if resize_method == "Crop":
         # Crop to desired dimensions
-        left = (new_width - st.session_state.width) / 2
-        top = (new_height - st.session_state.height) / 2
-        right = (new_width + st.session_state.width) / 2
-        bottom = (new_height + st.session_state.height) / 2
+        left = (new_width - width) / 2
+        top = (new_height - height) / 2
+        right = (new_width + width) / 2
+        bottom = (new_height + height) / 2
         final_image = resized_image.crop((left, top, right, bottom))
     else:
         # Pad to desired dimensions
-        delta_width = st.session_state.width - new_width
-        delta_height = st.session_state.height - new_height
+        delta_width = width - new_width
+        delta_height = height - new_height
         padding = (
             delta_width // 2,
             delta_height // 2,
@@ -344,23 +351,33 @@ def video_uploader():
         link_aspect = st.checkbox("Link Aspect Ratio", value=True)
 
         # Initialize width and height based on original video dimensions
-        if 'vid_width' not in st.session_state or 'vid_height' not in st.session_state or st.session_state.last_vid_aspect_ratio != aspect_ratio:
-            st.session_state.last_vid_aspect_ratio = aspect_ratio
-            st.session_state.vid_width = int(original_width)
-            st.session_state.vid_height = int(original_height)
-
-        # Store previous values to detect changes
-        if 'prev_vid_width' not in st.session_state:
-            st.session_state.prev_vid_width = st.session_state.vid_width
-        if 'prev_vid_height' not in st.session_state:
-            st.session_state.prev_vid_height = st.session_state.vid_height
-
+        if 'last_vid_aspect_ratio_name' not in st.session_state:
+            st.session_state.last_vid_aspect_ratio_name = selected_aspect_ratio_name
+            vid_width = int(original_width)
+            vid_height = int(original_height)
+        else:
+            if st.session_state.last_vid_aspect_ratio_name != selected_aspect_ratio_name:
+                st.session_state.last_vid_aspect_ratio_name = selected_aspect_ratio_name
+                vid_width = int(original_width)
+                vid_height = int(vid_width / aspect_ratio_value)
+            else:
+                vid_width = st.session_state.get('vid_width', int(original_width))
+                vid_height = st.session_state.get('vid_height', int(original_height))
+    
         # Input fields
         col1, col2 = st.columns(2)
         with col1:
-            st.number_input("Width (pixels)", min_value=1, value=st.session_state.vid_width, key='vid_width')
+            vid_width = st.number_input("Width (pixels)", min_value=1, value=vid_width)
         with col2:
-            st.number_input("Height (pixels)", min_value=1, value=st.session_state.vid_height, key='vid_height')
+            if link_aspect:
+                vid_height = int(vid_width / aspect_ratio_value)
+                st.markdown(f"**Height (pixels): {vid_height}**")
+            else:
+                vid_height = st.number_input("Height (pixels)", min_value=1, value=vid_height)
+    
+        # Update session_state
+        st.session_state['vid_width'] = vid_width
+        st.session_state['vid_height'] = vid_height
 
         # Detect changes and update other dimension if aspect ratio is linked
         if link_aspect:
