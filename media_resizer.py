@@ -701,7 +701,7 @@ people can semantically search for scenes. Ensure your captions include:
     )
 
     # Access the message content directly from 'choices'
-    caption = completion['choices'][0]['message']['content'].strip()
+    caption = completion.choices[0].message.content
 
     return caption
 
