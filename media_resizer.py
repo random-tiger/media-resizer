@@ -4,6 +4,7 @@ import moviepy.editor as mp
 import tempfile
 import os
 from streamlit_cropper import st_cropper
+from moviepy.video.fx.all import resize, margin
 
 def main():
     st.title("Media Resizer, Cropper, and Converter")
