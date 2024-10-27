@@ -614,48 +614,43 @@ def upload_file_to_s3(file_path, s3, s3_bucket, s3_region, folder='files'):
     file_url = f"https://{s3_bucket}.s3.{s3_region}.amazonaws.com/{s3_key}"
     return file_url
 
-def generate_caption(image_url, client):
-    caption_system_prompt = {
-        "role": "system",
-        "content": [
-            {
-                "type": "text",
-                "text": '''
-                You are an assistant that generates concise captions for images. These captions will be embedded and stored so 
-                people can semantically search for scenes. Ensure your captions include:
-                - Physical descriptions of people
-                - Identify and name key actors
-                - Descriptions of key scene objects such as their color
-                - The mood of the scene
-                - The actions or activities taking place in the scene
-                - Describe the quality of the image and suitability for promotional material
-                - Describe the angle and depth of the images (e.g., zoomed in close-up, zoomed out, etc.)
-                '''
-            }
-        ]
-    }
-    
-    # Generate caption using GPT-4o with image URL input
+def generate_caption(image_path, client):
+    caption_system_prompt = '''
+You are an assistant that generates concise captions for images. These captions will be embedded and stored so 
+people can semantically search for scenes. Ensure your captions include:
+- Physical descriptions of people
+- Identify and name key actors
+- Descriptions of key scene objects such as their color
+- The mood of the scene
+- The actions or activities taking place in the scene
+- Describe the quality of the image and suitability for promotional material
+- Describe the angle and depth of the images (e.g., zoomed in close-up, zoomed out, etc.)
+'''
+
+    # Generate caption using GPT-4o for the provided image path
     completion = client.chat.completions.create(
         model="gpt-4o",
         messages=[
-            caption_system_prompt,
+            {
+                "role": "system",
+                "content": [
+                    {"type": "text", "text": caption_system_prompt}
+                ]
+            },
             {
                 "role": "user",
                 "content": [
                     {"type": "text", "text": "Generate a caption for this image:"},
-                    {"type": "image_url", "image_url": {"url": image_url}}
+                    {"type": "image_url", "image_url": {"url": image_path}}
                 ]
             }
         ]
     )
-    
+
     # Access the message content directly from 'choices'
     caption = completion['choices'][0]['message']['content'].strip()
-    
+
     return caption
-
-
 
 def get_embedding(value, client, model="text-embedding-3-large"):
     response = client.embeddings.create(
