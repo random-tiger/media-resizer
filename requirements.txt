@@ -1,6 +1,6 @@
 streamlit>=1.26.0
 Pillow==9.5.0
-moviepy
+moviepy==1.0.3
 streamlit-cropper
 opencv-python-headless
 numpy
