@@ -10,8 +10,13 @@ pandas
 boto3
 scikit-learn
 scenedetect
-moviepy
 python-dotenv
 ipython
 ipywidgets
 ffmpeg
+opencv-python
+ffmpeg-python
+opencv-python-headless
+concurrent.futures
+torch
+transformers
