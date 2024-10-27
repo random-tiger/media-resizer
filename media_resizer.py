@@ -351,14 +351,14 @@ def video_uploader():
         # Input fields
         col1, col2 = st.columns(2)
         with col1:
-            st.session_state.vid_width = st.number_input("Width (pixels)", min_value=1, value=st.session_state.vid_width, key='vid_width')
+            st.number_input("Width (pixels)", min_value=1, value=st.session_state.vid_width, key='vid_width')
         with col2:
             if link_aspect and (platform != 'Custom' or selected_common_aspect_ratio != 'Custom'):
                 # Height is calculated
                 st.session_state.vid_height = int(st.session_state.vid_width / aspect_ratio_value)
                 st.markdown(f"**Height (pixels): {st.session_state.vid_height}**")
             else:
-                st.session_state.vid_height = st.number_input("Height (pixels)", min_value=1, value=st.session_state.vid_height, key='vid_height')
+                st.number_input("Height (pixels)", min_value=1, value=st.session_state.vid_height, key='vid_height')
 
         # Resize method
         resize_method = st.radio("Select Resize Method", ["Crop", "Pad (Add borders)"])
