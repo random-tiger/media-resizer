@@ -10,7 +10,7 @@ def main():
     st.title("Media Resizer, Cropper, and Converter")
     st.write("Upload an image or video file to resize, crop, and convert it to different formats.")
 
-    media_type = st.sidebar.selectbox("Select Media Type", ["Image", "Video"])
+    media_type = st.sidebar.selectbox("Select Media Type", ["Video", "Image"])
 
     if media_type == "Image":
         image_uploader()
