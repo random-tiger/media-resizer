@@ -615,7 +615,7 @@ def process_scene(scene_filename, s3, s3_bucket_name, s3_region, client):
     if frame_filename is None:
         return None
 
-    # Upload the frame image to S3 and get the pre-signed URL
+    # Upload the frame image to S3 and get the URL
     frame_url = upload_file_to_s3(frame_filename, s3, s3_bucket_name, s3_region, folder='frames')
     
     # Verify if the image URL is accessible
@@ -689,24 +689,21 @@ def upload_file_to_s3(file_path, s3, s3_bucket, s3_region, folder='files', expir
     elif ext.lower() in ['.srt']:
         content_type = 'text/plain'
     
-    # Upload the file without public-read ACL
+    # Upload the file with public-read ACL
     s3.upload_file(
         file_path, 
         s3_bucket, 
         s3_key, 
         ExtraArgs={
+            'ACL': 'public-read',
             'ContentType': content_type
         }
     )
     
-    # Generate a pre-signed URL
-    presigned_url = s3.generate_presigned_url(
-        'get_object',
-        Params={'Bucket': s3_bucket, 'Key': s3_key},
-        ExpiresIn=expiration
-    )
+    # Generate a public URL
+    file_url = f"https://{s3_bucket}.s3.{s3_region}.amazonaws.com/{s3_key}"
     
-    return presigned_url
+    return file_url
 
 def generate_caption(image_url, client):
     caption_system_prompt = '''
@@ -749,6 +746,12 @@ people can semantically search for scenes. Ensure your captions include:
 
         # Access the message content directly from 'choices'
         caption = completion.choices[0].message.content.strip()
+
+        return caption
+    except Exception as e:
+        st.error(f"Error generating caption: {e}")
+        return None
+
 
         return caption
     except Exception as e:
