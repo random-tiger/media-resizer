@@ -18,17 +18,17 @@ import requests
 
 
 def main():
-    st.title("Media Resizer, Converter, and Scene Search")
+    st.title("Media Studio")
     st.write("Upload a video file to resize, convert, add subtitles, or search scenes based on prompts.")
     
     operation_mode = st.sidebar.selectbox(
         "Select Operation Mode", 
-        ["Video", "Subtitle Creation Mode", "Scene Search"]
+        ["Video Resizer", "Subtitle Creator", "Scene Search"]
     )
     
-    if operation_mode == "Video":
+    if operation_mode == "Video Resizer":
         video_uploader()
-    elif operation_mode == "Subtitle Creation Mode":
+    elif operation_mode == "Subtitle Creator":
         subtitle_creation_mode()
     elif operation_mode == "Scene Search":
         scene_search_mode()
@@ -303,7 +303,7 @@ def video_uploader():
         st.write("Please upload a video file.")
 
 def subtitle_creation_mode():
-    st.header("Subtitle Creation Mode")
+    st.header("Subtitle Creator")
     
     # Check for OpenAI API key in st.secrets
     if "OPENAI_API_KEY" in st.secrets:
@@ -469,7 +469,7 @@ def embed_subtitles_into_video(video_file_path, subtitle_content, language):
     return output_video_file.name
 
 def scene_search_mode():
-    st.header("Scene Search Mode")
+    st.header("Scene Search")
     
     # Check for AWS credentials and OpenAI API key in st.secrets
     if ("AWS_ACCESS_KEY_ID" in st.secrets and 
