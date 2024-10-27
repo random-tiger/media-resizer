@@ -175,7 +175,19 @@ def video_uploader():
             try:
                 clip = mp.VideoFileClip(tfile.name)
                 width, height = map(int, resolution.split('x'))
-                resized_clip = clip.resize(newsize=(width, height))
+
+                # Maintain aspect ratio and add padding
+                original_aspect = clip.w / clip.h
+                new_aspect = width / height
+
+                if original_aspect > new_aspect:
+                    resized_clip = clip.resize(width=width)
+                    pad_height = (height - resized_clip.h) / 2
+                    resized_clip = resized_clip.margin(top=int(pad_height), bottom=int(pad_height), color=(0, 0, 0))
+                else:
+                    resized_clip = clip.resize(height=height)
+                    pad_width = (width - resized_clip.w) / 2
+                    resized_clip = resized_clip.margin(left=int(pad_width), right=int(pad_width), color=(0, 0, 0))
 
                 # Save to a temporary file
                 temp_video_file = tempfile.NamedTemporaryFile(delete=False, suffix='.' + output_format)
@@ -197,11 +209,15 @@ def video_uploader():
                     video_codec = 'libx264'
                     audio_codec = 'aac'
 
+                # Use faster encoding preset and other optimizations
+                ffmpeg_params = ['-preset', 'ultrafast', '-ac', '2']
                 resized_clip.write_videofile(
                     temp_video_file.name,
                     codec=video_codec,
                     audio_codec=audio_codec,
-                    audio=True
+                    audio=True,
+                    threads=16,  # Adjust based on your CPU
+                    ffmpeg_params=ffmpeg_params
                 )
 
                 # Provide download link
