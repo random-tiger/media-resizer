@@ -627,8 +627,8 @@ people can semantically search for scenes. Ensure your captions include:
 - Describe the angle and depth of the images (e.g., zoomed in close-up, zoomed out, etc.)
 '''
     # Generate caption using GPT-4
-    completion = client.ChatCompletion.create(
-        model="gpt-4",
+    completion = client.chat.completions.create(
+        model="gpt-4o",
         messages=[
             {
                 "role": "system",
