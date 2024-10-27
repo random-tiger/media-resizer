@@ -4,7 +4,7 @@ moviepy==1.0.3
 streamlit-cropper
 opencv-python-headless
 numpy
-openai==0.28
+openai
 opencv-python
 pandas
 boto3
