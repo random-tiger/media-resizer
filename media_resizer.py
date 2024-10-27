@@ -626,9 +626,9 @@ people can semantically search for scenes. Ensure your captions include:
 - Describe the quality of the image and suitability for promotional material
 - Describe the angle and depth of the images (e.g., zoomed in close-up, zoomed out, etc.)
 '''
-    # Generate caption using GPT-4o
-    completion = client.chat.completions.create(
-        model="gpt-4o",
+    # Generate caption using GPT-4
+    completion = client.ChatCompletion.create(
+        model="gpt-4",
         messages=[
             {
                 "role": "system",
@@ -640,8 +640,12 @@ people can semantically search for scenes. Ensure your captions include:
             }
         ]
     )
-    caption = completion.choices[0].message['content'].strip()
+    
+    # Access the message content directly from 'choices'
+    caption = completion['choices'][0]['message']['content'].strip()
+    
     return caption
+
 
 def get_embedding(value, client, model="text-embedding-3-large"):
     response = client.embeddings.create(
