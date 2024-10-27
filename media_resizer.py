@@ -4,7 +4,7 @@ import moviepy.editor as mp
 import tempfile
 import os
 from streamlit_cropper import st_cropper
-from moviepy.video.fx.all import resize, margin
+from moviepy.video.fx.all import margin
 
 def main():
     st.title("Media Resizer, Cropper, and Converter")
@@ -183,12 +183,15 @@ def video_uploader():
 
                 if original_aspect > new_aspect:
                     resized_clip = clip.resize(width=width)
-                    pad_height = (height - resized_clip.h) / 2
-                    resized_clip = resized_clip.margin(top=int(pad_height), bottom=int(pad_height), color=(0, 0, 0))
+                    pad_height = max((height - resized_clip.h) / 2, 0)
+                    resized_clip = margin(resized_clip, top=int(pad_height), bottom=int(pad_height), color=(0, 0, 0))
                 else:
                     resized_clip = clip.resize(height=height)
-                    pad_width = (width - resized_clip.w) / 2
-                    resized_clip = resized_clip.margin(left=int(pad_width), right=int(pad_width), color=(0, 0, 0))
+                    pad_width = max((width - resized_clip.w) / 2, 0)
+                    resized_clip = margin(resized_clip, left=int(pad_width), right=int(pad_width), color=(0, 0, 0))
+
+                # Ensure the final clip has the desired dimensions
+                resized_clip = resized_clip.resize(newsize=(width, height))
 
                 # Save to a temporary file
                 temp_video_file = tempfile.NamedTemporaryFile(delete=False, suffix='.' + output_format)
@@ -217,7 +220,7 @@ def video_uploader():
                     codec=video_codec,
                     audio_codec=audio_codec,
                     audio=True,
-                    threads=16,  # Adjust based on your CPU
+                    threads=4,  # Adjust based on your CPU
                     ffmpeg_params=ffmpeg_params
                 )
 
