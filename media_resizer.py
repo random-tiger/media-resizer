@@ -333,8 +333,8 @@ def video_uploader():
                 aspect_ratio = common_aspect_ratios[selected_common_aspect_ratio]
             else:
                 # User inputs custom aspect ratio
-                custom_width = st.number_input("Aspect Ratio Width", min_value=1, value=16)
-                custom_height = st.number_input("Aspect Ratio Height", min_value=1, value=9)
+                custom_width = st.number_input("Aspect Ratio Width", min_value=1, value=16, key='custom_aspect_width')
+                custom_height = st.number_input("Aspect Ratio Height", min_value=1, value=9, key='custom_aspect_height')
                 aspect_ratio = (custom_width, custom_height)
 
         # Aspect ratio value
@@ -346,38 +346,40 @@ def video_uploader():
         # Initialize width and height based on original video dimensions
         if 'vid_width' not in st.session_state or 'vid_height' not in st.session_state or st.session_state.last_vid_aspect_ratio != aspect_ratio:
             st.session_state.last_vid_aspect_ratio = aspect_ratio
+            st.session_state.vid_width = int(original_width)
+            st.session_state.vid_height = int(original_height)
 
-            if original_aspect_ratio >= aspect_ratio_value:
-                # Original video is wider than target aspect ratio
-                st.session_state.vid_height = original_height
-                st.session_state.vid_width = int(st.session_state.vid_height * aspect_ratio_value)
-            else:
-                # Original video is taller than target aspect ratio
-                st.session_state.vid_width = original_width
-                st.session_state.vid_height = int(st.session_state.vid_width / aspect_ratio_value)
-
-        # Option to fix width or height
-        fix_dimension = st.radio("Fix Dimension", ["Width", "Height"])
+        # Store previous values to detect changes
+        if 'prev_vid_width' not in st.session_state:
+            st.session_state.prev_vid_width = st.session_state.vid_width
+        if 'prev_vid_height' not in st.session_state:
+            st.session_state.prev_vid_height = st.session_state.vid_height
 
         # Input fields
         col1, col2 = st.columns(2)
         with col1:
-            if fix_dimension == "Width":
-                st.number_input("Width (pixels)", min_value=1, value=st.session_state.vid_width, key='vid_width')
-                if link_aspect:
-                    st.session_state.vid_height = int(st.session_state.vid_width / aspect_ratio_value)
-                    st.markdown(f"**Height (pixels): {st.session_state.vid_height}**")
-            else:
-                st.number_input("Width (pixels)", min_value=1, value=st.session_state.vid_width, key='vid_width')
-
+            st.session_state.vid_width = st.number_input("Width (pixels)", min_value=1, value=st.session_state.vid_width, key='vid_width')
         with col2:
-            if fix_dimension == "Height":
-                st.number_input("Height (pixels)", min_value=1, value=st.session_state.vid_height, key='vid_height')
-                if link_aspect:
-                    st.session_state.vid_width = int(st.session_state.vid_height * aspect_ratio_value)
-                    st.markdown(f"**Width (pixels): {st.session_state.vid_width}**")
-            else:
-                st.number_input("Height (pixels)", min_value=1, value=st.session_state.vid_height, key='vid_height')
+            st.session_state.vid_height = st.number_input("Height (pixels)", min_value=1, value=st.session_state.vid_height, key='vid_height')
+
+        # Detect changes and update other dimension if aspect ratio is linked
+        if link_aspect:
+            width_changed = st.session_state.vid_width != st.session_state.prev_vid_width
+            height_changed = st.session_state.vid_height != st.session_state.prev_vid_height
+
+            if width_changed and not height_changed:
+                # Width changed, update height
+                st.session_state.vid_height = int(st.session_state.vid_width / aspect_ratio_value)
+            elif height_changed and not width_changed:
+                # Height changed, update width
+                st.session_state.vid_width = int(st.session_state.vid_height * aspect_ratio_value)
+            elif width_changed and height_changed:
+                # Both changed, do nothing to avoid conflicts
+                pass
+
+            # Update previous values
+            st.session_state.prev_vid_width = st.session_state.vid_width
+            st.session_state.prev_vid_height = st.session_state.vid_height
 
         # Resize method
         resize_method = st.radio("Select Resize Method", ["Crop", "Pad (Add borders)"])
@@ -386,16 +388,18 @@ def video_uploader():
 
         if st.button("Resize and Convert Video"):
             try:
-                # The clip has already been loaded
-                # Resize the clip while maintaining aspect ratio
-                clip_aspect_ratio = clip.w / clip.h
-                target_aspect_ratio = st.session_state.vid_width / st.session_state.vid_height
+                # Use st.session_state.vid_width and st.session_state.vid_height
+                target_width = st.session_state.vid_width
+                target_height = st.session_state.vid_height
 
-                # Determine scaling factors
-                if fix_dimension == "Width":
-                    scale_factor = st.session_state.vid_width / clip.w
+                # Calculate scaling factor
+                scale_factor_w = target_width / clip.w
+                scale_factor_h = target_height / clip.h
+
+                if scale_factor_w < scale_factor_h:
+                    scale_factor = scale_factor_h
                 else:
-                    scale_factor = st.session_state.vid_height / clip.h
+                    scale_factor = scale_factor_w
 
                 new_width = int(clip.w * scale_factor)
                 new_height = int(clip.h * scale_factor)
@@ -406,10 +410,10 @@ def video_uploader():
                     # Crop to desired dimensions
                     x_center = new_width / 2
                     y_center = new_height / 2
-                    x1 = x_center - st.session_state.vid_width / 2
-                    y1 = y_center - st.session_state.vid_height / 2
-                    x2 = x_center + st.session_state.vid_width / 2
-                    y2 = y_center + st.session_state.vid_height / 2
+                    x1 = x_center - target_width / 2
+                    y1 = y_center - target_height / 2
+                    x2 = x_center + target_width / 2
+                    y2 = y_center + target_height / 2
 
                     final_clip = resized_clip.crop(
                         x1=max(0, x1),
@@ -419,8 +423,8 @@ def video_uploader():
                     )
                 else:
                     # Pad to desired dimensions
-                    pad_width = st.session_state.vid_width - new_width
-                    pad_height = st.session_state.vid_height - new_height
+                    pad_width = target_width - new_width
+                    pad_height = target_height - new_height
                     pad_left = int(pad_width / 2)
                     pad_right = pad_width - pad_left
                     pad_top = int(pad_height / 2)
@@ -484,6 +488,8 @@ def video_uploader():
                 clip.close()
                 os.unlink(temp_video_path)
                 os.unlink(tfile.name)
+    else:
+        st.write("Please upload a video file.")
 
 if __name__ == "__main__":
     main()
