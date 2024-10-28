@@ -95,20 +95,34 @@ def subtitle_creation_mode():
                 else:
                     st.warning(f"No subtitles available for {language}.")
             
-            # Option to embed subtitles into the video
+            # **Embed Subtitles into Video Section**
             st.write("### Embed Subtitles into Video")
-            embed_option = st.radio("Do you want to embed subtitles into the video?", ["No", "Yes"])
             
-            if embed_option == "Yes":
-                if not subtitles:
-                    st.warning("No subtitles available to embed.")
-                else:
-                    language_to_embed = st.selectbox("Select language to embed into video", list(subtitles.keys()))
+            if not subtitles:
+                st.warning("No subtitles available to embed.")
+            else:
+                # Allow user to select the language for embedding
+                language_to_embed = st.selectbox(
+                    "Select language to embed into video", 
+                    list(subtitles.keys()),
+                    key="embed_language_select"
+                )
+                
+                # Add the Embed button
+                if st.button("Embed Subtitles"):
                     st.write(f"Embedding {language_to_embed} subtitles into the video...")
                     try:
-                        subtitled_video_path = embed_subtitles_into_video(tfile.name, subtitles[language_to_embed], language_to_embed)
+                        # Perform the embedding
+                        subtitled_video_path = embed_subtitles_into_video(
+                            tfile.name, 
+                            subtitles[language_to_embed], 
+                            language_to_embed
+                        )
+                        
+                        # Display the subtitled video
                         st.video(subtitled_video_path)
-                        # Provide download button
+                        
+                        # Provide a download button for the subtitled video
                         with open(subtitled_video_path, 'rb') as f:
                             video_bytes = f.read()
                             st.download_button(
@@ -119,8 +133,10 @@ def subtitle_creation_mode():
                             )
                     except Exception as e:
                         st.error(f"Error embedding subtitles: {e}")
-            else:
-                st.write("Subtitles not embedded.")
+                    finally:
+                        # Optionally, clean up the subtitled video file
+                        if os.path.exists(subtitled_video_path):
+                            os.unlink(subtitled_video_path)
         
         finally:
             # Clean up temporary files
@@ -128,8 +144,7 @@ def subtitle_creation_mode():
                 os.unlink(tfile.name)
             if 'audio_file_path' in locals() and os.path.exists(audio_file_path):
                 os.unlink(audio_file_path)
-            if 'subtitled_video_path' in locals() and os.path.exists(subtitled_video_path):
-                os.unlink(subtitled_video_path)
+            # Note: subtitled_video_path is already cleaned up in the 'finally' block above
     else:
         st.write("Please upload a video file.")
 
@@ -152,7 +167,12 @@ def generate_subtitles(audio_file_path, language_code, client):
                 response_format="srt",
                 language=language_code
             )
-            return response  # Return the SRT string directly
+            if isinstance(response, str):
+                return response  # Return the SRT string directly
+            else:
+                logging.error("Unexpected response format: %s", type(response))
+                st.error("Received unexpected response format from the transcription API.")
+                return None
         except Exception as e:
             logging.error(f"Error during transcription for language {language_code}: {e}")
             st.error(f"Error during transcription: {e}")
