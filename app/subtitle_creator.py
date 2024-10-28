@@ -59,12 +59,15 @@ def subtitle_creation_mode():
         
         # Dictionary to store subtitles
         subtitles = {}
-        
+
         for language in selected_languages:
             code = language_codes[language]
             st.write(f"Transcribing audio to {language}...")
             try:
                 subtitle_content = generate_subtitles(audio_file_path, code, client)
+                if subtitle_content is None:
+                    st.error(f"Failed to generate subtitles for {language}.")
+                    continue  # Skip adding a download button for this language
                 st.write(f"Subtitles in {language} generated successfully.")
                 subtitles[language] = subtitle_content
             except Exception as e:
@@ -95,10 +98,12 @@ def subtitle_creation_mode():
                 subtitled_video_path = embed_subtitles_into_video(tfile.name, subtitles[language_to_embed], language_to_embed)
                 st.video(subtitled_video_path)
                 # Provide download button
+
                 with open(subtitled_video_path, 'rb') as f:
+                    video_bytes = f.read()
                     st.download_button(
                         label=f"Download Video with {language_to_embed} Subtitles", 
-                        data=f, 
+                        data=video_bytes, 
                         file_name=f"video_with_{language_to_embed}_subtitles.mp4",
                         mime="video/mp4"
                     )
