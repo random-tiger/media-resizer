@@ -6,7 +6,7 @@ import tempfile
 import os
 import subprocess
 import platform
-from .utils import clean_up_files
+from utils import clean_up_files
 
 def subtitle_creation_mode():
     st.header("Subtitle Creator")
