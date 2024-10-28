@@ -31,7 +31,10 @@ def video_uploader():
             return
 
         # Define platforms and their aspect ratios
-        platforms = ["Instagram", "Facebook", "YouTube", "Twitter", "Snapchat", "LinkedIn", "Pinterest", "Custom"]
+        platforms = [
+            "Instagram", "Facebook", "YouTube", "Twitter",
+            "Snapchat", "LinkedIn", "Pinterest", "Tubi", "Custom"
+        ]
         platform = st.selectbox("Select Platform", platforms)
 
         platform_aspect_ratios = {
@@ -75,6 +78,14 @@ def video_uploader():
                 "Standard Pin (2:3)": (2, 3),
                 "Square Pin (1:1)": (1, 1),
                 "Long Pin (1:2.1)": (1, 2.1),
+            },
+            # New Platform: Tubi
+            "Tubi": {
+                "Horizontal 16:9 (1920x1080)": (16, 9),
+                "Horizontal 4K (3840x2160)": (16, 9),
+                "Vertical 9:16 (1080x1920)": (9, 16),
+                "Square 1:1 (1080x1080)": (1, 1),
+                "Banner 3.88:1 (1628x420)": (3.88, 1),
             },
             "Custom": {},
         }
@@ -264,4 +275,5 @@ def video_uploader():
             finally:
                 # Clean up temporary files and release resources
                 clip.close()
-                clean_up_files([temp_video_path, temp_video_path, temp_video_path, tfile.name])
+                clean_up_files([temp_video_path, tfile.name])
+
