@@ -9,8 +9,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 import boto3
 from scenedetect import open_video, SceneManager
 from scenedetect.detectors import ContentDetector
-from utils import upload_file_to_s3, is_url_accessible, clean_up_files
-from utils import generate_caption, get_embedding
+from .utils import upload_file_to_s3, is_url_accessible, clean_up_files
+from .utils import generate_caption, get_embedding
 
 def scene_search_mode():
     st.header("Scene Search")
