@@ -14,20 +14,20 @@ def video_uploader():
         tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
         tfile.write(uploaded_video.read())
         tfile.flush()
-        temp_video_path = tfile.name
-        st.video(temp_video_path)
+        input_video_path = tfile.name
+        st.video(input_video_path)
 
         st.write("### Resize Options")
 
         # Load the video clip to get dimensions
         try:
-            clip = mp.VideoFileClip(temp_video_path)
+            clip = mp.VideoFileClip(input_video_path)
             original_width = clip.w
             original_height = clip.h
             original_aspect_ratio = original_width / original_height
         except Exception as e:
             st.error(f"An error occurred while loading the video: {e}")
-            clean_up_files([temp_video_path])
+            clean_up_files([input_video_path])
             return
 
         # Define platforms and their aspect ratios
@@ -95,70 +95,48 @@ def video_uploader():
             aspect_ratio_names = list(aspect_ratio_dict.keys())
             selected_aspect_ratio_name = st.selectbox("Select Aspect Ratio", aspect_ratio_names)
             aspect_ratio = aspect_ratio_dict[selected_aspect_ratio_name]
+
+            # Determine target width and height based on selected aspect ratio
+            if platform == "Tubi":
+                # Extract resolution from the aspect ratio name if available
+                if "1920x1080" in selected_aspect_ratio_name:
+                    target_width, target_height = 1920, 1080
+                elif "3840x2160" in selected_aspect_ratio_name:
+                    target_width, target_height = 3840, 2160
+                elif "1080x1920" in selected_aspect_ratio_name:
+                    target_width, target_height = 1080, 1920
+                elif "1080x1080" in selected_aspect_ratio_name:
+                    target_width, target_height = 1080, 1080
+                elif "1628x420" in selected_aspect_ratio_name:
+                    target_width, target_height = 1628, 420
+                else:
+                    # Default to a standard width if resolution is not specified
+                    target_width = 1080
+                    target_height = int(target_width / aspect_ratio[0] * aspect_ratio[1])
+            else:
+                # For other platforms, set a default width and calculate height
+                target_width = 1080
+                target_height = int(target_width / aspect_ratio[0] * aspect_ratio[1])
+
         else:
-            # For Custom platform
+            # For Custom platform, set aspect ratio and determine dimensions
             common_aspect_ratios = {
                 "16:9": (16, 9),
                 "4:3": (4, 3),
                 "1:1": (1, 1),
                 "4:5": (4, 5),
                 "9:16": (9, 16),
-                "Custom": "Custom"
             }
             aspect_ratio_names = list(common_aspect_ratios.keys())
             selected_common_aspect_ratio = st.selectbox("Select Aspect Ratio", aspect_ratio_names)
-            if selected_common_aspect_ratio != "Custom":
-                aspect_ratio = common_aspect_ratios[selected_common_aspect_ratio]
-            else:
-                # User inputs custom aspect ratio
-                custom_width = st.number_input("Aspect Ratio Width", min_value=1, value=16)
-                custom_height = st.number_input("Aspect Ratio Height", min_value=1, value=9)
-                aspect_ratio = (custom_width, custom_height)
+            aspect_ratio = common_aspect_ratios[selected_common_aspect_ratio]
 
-        # Aspect ratio value
-        aspect_ratio_value = aspect_ratio[0] / aspect_ratio[1]
+            # Set default width and calculate height
+            target_width = 1080
+            target_height = int(target_width / aspect_ratio[0] * aspect_ratio[1])
 
-        # Link or unlink aspect ratio
-        link_aspect = st.checkbox("Link Aspect Ratio", value=True)
-        
-        # Initialize width and height based on default dimensions
-        default_width = 1080  # Set a standard default width
-        default_height = int(default_width / aspect_ratio_value)
-
-        # Initialize or retrieve vid_width and vid_height
-        if 'vid_width' not in st.session_state:
-            st.session_state['vid_width'] = default_width
-            st.session_state['vid_height'] = default_height
-            st.session_state['last_vid_aspect_ratio_name'] = selected_aspect_ratio_name if platform != "Custom" else "Custom"
-        else:
-            if platform != "Custom":
-                if st.session_state['last_vid_aspect_ratio_name'] != selected_aspect_ratio_name:
-                    st.session_state['vid_width'] = default_width
-                    st.session_state['vid_height'] = default_height
-                    st.session_state['last_vid_aspect_ratio_name'] = selected_aspect_ratio_name
-            else:
-                if st.session_state['last_vid_aspect_ratio_name'] != "Custom":
-                    st.session_state['vid_width'] = default_width
-                    st.session_state['vid_height'] = default_height
-                    st.session_state['last_vid_aspect_ratio_name'] = "Custom"
-        
-        vid_width = st.session_state['vid_width']
-        vid_height = st.session_state['vid_height']
-        
-        # Input fields with unique keys
-        col1, col2 = st.columns(2)
-        with col1:
-            vid_width = st.number_input("Width (pixels)", min_value=1, value=vid_width, key='vid_width_input')
-        with col2:
-            if link_aspect:
-                vid_height = int(vid_width / aspect_ratio_value)
-                st.markdown(f"**Height (pixels): {vid_height}**")
-            else:
-                vid_height = st.number_input("Height (pixels)", min_value=1, value=vid_height, key='vid_height_input')
-        
-        # Update session_state after inputs
-        st.session_state['vid_width'] = vid_width
-        st.session_state['vid_height'] = vid_height
+        # Display the determined dimensions to the user
+        st.markdown(f"**Target Dimensions:** {target_width} x {target_height} pixels")
 
         # Resize method
         resize_method = st.radio("Select Resize Method", ["Crop", "Pad (Add borders)"])
@@ -167,11 +145,11 @@ def video_uploader():
 
         if st.button("Resize and Convert Video"):
             try:
-                # Use vid_width and vid_height
-                target_width = vid_width
-                target_height = vid_height
+                # Use target_width and target_height
+                target_width = target_width
+                target_height = target_height
 
-                # Calculate scaling factor differently based on resize method
+                # Calculate scaling factor based on resize method
                 if resize_method == "Crop":
                     # For cropping, scale up to ensure dimensions are larger
                     scale_factor_w = target_width / clip.w
@@ -225,7 +203,7 @@ def video_uploader():
 
                 # Save to a temporary file
                 temp_video_file = tempfile.NamedTemporaryFile(delete=False, suffix='.' + output_format)
-                temp_video_path = temp_video_file.name
+                output_video_path = temp_video_file.name
                 temp_video_file.close()  # Close the file so MoviePy can write to it
 
                 # Determine the audio codec based on the output format
@@ -248,7 +226,7 @@ def video_uploader():
                 # Use faster encoding preset and other optimizations
                 ffmpeg_params = ['-preset', 'ultrafast', '-ac', '2']
                 final_clip.write_videofile(
-                    temp_video_path,
+                    output_video_path,
                     codec=video_codec,
                     audio_codec=audio_codec,
                     audio=True,
@@ -259,10 +237,10 @@ def video_uploader():
 
                 # Display the resized video
                 st.write("### Resized Video Preview")
-                st.video(temp_video_path)
+                st.video(output_video_path)
 
                 # Provide download link
-                with open(temp_video_path, 'rb') as f:
+                with open(output_video_path, 'rb') as f:
                     st.download_button(
                         label='Download Resized Video', 
                         data=f, 
@@ -275,5 +253,4 @@ def video_uploader():
             finally:
                 # Clean up temporary files and release resources
                 clip.close()
-                clean_up_files([temp_video_path, tfile.name])
-
+                clean_up_files([input_video_path, output_video_path])
