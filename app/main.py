@@ -1,9 +1,9 @@
 # app/main.py
 
 import streamlit as st
-from .video_resizer import video_uploader
-from .subtitle_creator import subtitle_creation_mode
-from .scene_search import scene_search_mode
+from video_resizer import video_uploader
+from subtitle_creator import subtitle_creation_mode
+from scene_search import scene_search_mode
 
 def main():
     st.title("Media Studio")
