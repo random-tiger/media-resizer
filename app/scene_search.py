@@ -265,8 +265,8 @@ people can semantically search for scenes. Ensure your captions include:
 - Identify and name key actors
 - Descriptions of key scene objects such as their color
 - The mood of the scene
+- Transcribe the words in the image
 - The actions or activities taking place in the scene
-- Describe the quality of the image and suitability for promotional material
 - Describe the angle and depth of the images (e.g., zoomed in close-up, zoomed out, etc.)
 '''
 
