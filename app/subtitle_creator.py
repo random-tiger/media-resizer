@@ -11,13 +11,12 @@ from openai import OpenAI
 
 def subtitle_creation_mode():
     st.header("Subtitle Creation Mode")
-    
-    # Check for OpenAI API key in st.secrets
-    if "OPENAI_API_KEY" in st.secrets:
-        openai.api_key = st.secrets["OPENAI_API_KEY"]
-    else:
-        st.error("OpenAI API key not found in st.secrets. Please add it to your Streamlit secrets.")
+
+    # Check for OpenAI API key
+    if "OPENAI_API_KEY" not in st.secrets:
+        st.error("OpenAI API key not found in st.secrets. Please add it.")
         return
+    openai.api_key = st.secrets["OPENAI_API_KEY"]
     
     # Prompt user to upload a video file
     uploaded_video = st.file_uploader("Upload a video file", type=["mp4", "avi", "mov", "mkv"])
