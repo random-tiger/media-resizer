@@ -5,7 +5,7 @@ import moviepy.editor as mp
 import tempfile
 import os
 from moviepy.video.fx.all import margin
-from utils import clean_up_files
+from .utils import clean_up_files
 
 def video_uploader():
     uploaded_video = st.file_uploader("Choose a video file", type=["mp4", "avi", "mov", "mkv"])
