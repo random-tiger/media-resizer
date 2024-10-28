@@ -10,13 +10,14 @@ from utils import clean_up_files
 from openai import OpenAI
 
 def subtitle_creation_mode():
-    st.header("Subtitle Creation Mode")
-
-    # Check for OpenAI API key
-    if "OPENAI_API_KEY" not in st.secrets:
-        st.error("OpenAI API key not found in st.secrets. Please add it.")
+    st.header("Subtitle Creator")
+    
+    # Check for OpenAI API key in st.secrets
+    if "OPENAI_API_KEY" in st.secrets:
+        client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+    else:
+        st.error("OpenAI API key not found in st.secrets. Please add it to your Streamlit secrets.")
         return
-    openai.api_key = st.secrets["OPENAI_API_KEY"]
     
     # Prompt user to upload a video file
     uploaded_video = st.file_uploader("Upload a video file", type=["mp4", "avi", "mov", "mkv"])
@@ -63,7 +64,7 @@ def subtitle_creation_mode():
             code = language_codes[language]
             st.write(f"Transcribing audio to {language}...")
             try:
-                subtitle_content = generate_subtitles(audio_file_path, code)
+                subtitle_content = generate_subtitles(audio_file_path, code, client)
                 st.write(f"Subtitles in {language} generated successfully.")
                 subtitles[language] = subtitle_content
             except Exception as e:
@@ -76,7 +77,12 @@ def subtitle_creation_mode():
         for language in subtitles:
             subtitle_content = subtitles[language]
             srt_filename = f"subtitles_{language}.srt"
-            st.download_button(f"Download {language} Subtitles (.srt)", subtitle_content, file_name=srt_filename)
+            st.download_button(
+                label=f"Download {language} Subtitles (.srt)", 
+                data=subtitle_content, 
+                file_name=srt_filename,
+                mime="text/plain"
+            )
         
         # Option to embed subtitles into the video
         st.write("### Embed Subtitles into Video")
@@ -90,7 +96,12 @@ def subtitle_creation_mode():
                 st.video(subtitled_video_path)
                 # Provide download button
                 with open(subtitled_video_path, 'rb') as f:
-                    st.download_button(f"Download Video with {language_to_embed} Subtitles", f, file_name=f"video_with_{language_to_embed}_subtitles.mp4")
+                    st.download_button(
+                        label=f"Download Video with {language_to_embed} Subtitles", 
+                        data=f, 
+                        file_name=f"video_with_{language_to_embed}_subtitles.mp4",
+                        mime="video/mp4"
+                    )
             except Exception as e:
                 st.error(f"Error embedding subtitles: {e}")
         else:
@@ -114,15 +125,19 @@ def extract_audio(video_file_path):
     audio.close()
     return audio_file.name
 
-def generate_subtitles(audio_file_path, language_code):
+def generate_subtitles(audio_file_path, language_code, client):
     with open(audio_file_path, 'rb') as audio_file:
-        response = openai.Audio.transcribe(
-            model="whisper-1",
-            file=audio_file,
-            response_format="srt",
-            language=language_code
-        )
-    return response  # The response contains the SRT content as text
+        try:
+            response = client.audio.transcriptions.create(
+                file=audio_file,
+                model="whisper-1",
+                response_format="srt",
+                language=language_code
+            )
+            return response['text']  # The response contains the SRT content as text
+        except Exception as e:
+            st.error(f"Error during transcription: {e}")
+            return None
 
 def embed_subtitles_into_video(video_file_path, subtitle_content, language):
     # Save the subtitles to a .srt file
