@@ -131,19 +131,24 @@ def extract_audio(video_file_path):
             audio_path = audio_file.name
     return audio_path
 
-def generate_subtitles(audio_file_path, language_code, client):
-    with open(audio_file_path, 'rb') as audio_file:
-        try:
-            response = client.audio.transcriptions.create(
-                file=audio_file,
-                model="whisper-1",
-                response_format="srt",
-                language=language_code
-            )
-            return response['text']  # The response contains the SRT content as text
-        except Exception as e:
-            st.error(f"Error during transcription: {e}")
-            return None
+def generate_subtitles_srt(audio_file_path, language_code):
+    try:
+        response = openai.Audio.transcriptions.create(
+            file=open(audio_file_path, "rb"),
+            model="whisper-1",
+            response_format="srt",  # String-based response
+            language=language_code
+        )
+        transcription = response  # response is a string in SRT format
+        return transcription
+    except openai.error.OpenAIError as e:
+        st.error(f"OpenAI API Error: {e}")
+        logger.error(f"OpenAI API Error during transcription: {e}")
+        return None
+    except Exception as e:
+        st.error(f"Unexpected Error: {e}")
+        logger.error(f"Unexpected Error during transcription: {e}")
+        return None
 
 def embed_subtitles_into_video(video_file_path, subtitle_content, language):
     # Save the subtitles to a .srt file
