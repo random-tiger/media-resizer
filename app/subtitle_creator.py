@@ -131,7 +131,7 @@ def extract_audio(video_file_path):
             audio_path = audio_file.name
     return audio_path
 
-def generate_subtitles_srt(audio_file_path, language_code):
+def generate_subtitles(audio_file_path, language_code):
     try:
         response = openai.Audio.transcriptions.create(
             file=open(audio_file_path, "rb"),
