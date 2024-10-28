@@ -6,8 +6,12 @@ import tempfile
 import os
 import subprocess
 import platform
+import logging
 from utils import clean_up_files
 from openai import OpenAI
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 
 def subtitle_creation_mode():
     st.header("Subtitle Creator")
@@ -24,99 +28,108 @@ def subtitle_creation_mode():
     if uploaded_video is not None:
         # Save the uploaded video to a temporary file
         tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-        tfile.write(uploaded_video.read())
-        tfile.flush()
-        
-        # Display the video
-        st.video(tfile.name)
-        
-        # Extract audio from video
-        st.write("Extracting audio from the video...")
         try:
-            audio_file_path = extract_audio(tfile.name)
-            st.write("Audio extracted successfully.")
-        except Exception as e:
-            st.error(f"Error extracting audio: {e}")
-            return
-        
-        # Generate subtitles
-        st.write("Generating subtitles using OpenAI Whisper...")
-        # Option to select languages
-        languages = ["English", "Spanish"]
-        selected_languages = st.multiselect("Select languages for subtitles", languages, default=languages)
-        
-        # Map language names to OpenAI language codes
-        language_codes = {"English": "en", "Spanish": "es"}
-        
-        if not selected_languages:
-            st.warning("Please select at least one language for subtitles.")
-            return
-        
-        # Create a placeholder to show progress
-        progress_bar = st.progress(0)
-        total_languages = len(selected_languages)
-        current_progress = 0
-        
-        # Dictionary to store subtitles
-        subtitles = {}
-
-        for language in selected_languages:
-            code = language_codes[language]
-            st.write(f"Transcribing audio to {language}...")
+            tfile.write(uploaded_video.read())
+            tfile.flush()
+            
+            # Display the video
+            st.video(tfile.name)
+            
+            # Extract audio from video
+            st.write("Extracting audio from the video...")
             try:
-                subtitle_content = generate_subtitles(audio_file_path, code, client)
-                if subtitle_content is None:
-                    st.error(f"Failed to generate subtitles for {language}.")
-                    continue  # Skip adding a download button for this language
-                st.write(f"Subtitles in {language} generated successfully.")
-                subtitles[language] = subtitle_content
+                audio_file_path = extract_audio(tfile.name)
+                st.write("Audio extracted successfully.")
             except Exception as e:
-                st.error(f"Error generating subtitles in {language}: {e}")
-            current_progress += 1
-            progress_bar.progress(current_progress / total_languages)
-        
-        # Provide download buttons for subtitles
-        st.write("### Download Subtitles")
-        for language in subtitles:
-            subtitle_content = subtitles[language]
-            srt_filename = f"subtitles_{language}.srt"
-            st.download_button(
-                label=f"Download {language} Subtitles (.srt)", 
-                data=subtitle_content, 
-                file_name=srt_filename,
-                mime="text/plain"
-            )
-        
-        # Option to embed subtitles into the video
-        st.write("### Embed Subtitles into Video")
-        embed_option = st.radio("Do you want to embed subtitles into the video?", ["No", "Yes"])
-        
-        if embed_option == "Yes":
-            language_to_embed = st.selectbox("Select language to embed into video", selected_languages)
-            st.write(f"Embedding {language_to_embed} subtitles into the video...")
-            try:
-                subtitled_video_path = embed_subtitles_into_video(tfile.name, subtitles[language_to_embed], language_to_embed)
-                st.video(subtitled_video_path)
-                # Provide download button
-
-                with open(subtitled_video_path, 'rb') as f:
-                    video_bytes = f.read()
+                st.error(f"Error extracting audio: {e}")
+                return
+            
+            # Generate subtitles
+            st.write("Generating subtitles using OpenAI Whisper...")
+            # Option to select languages
+            languages = ["English", "Spanish"]
+            selected_languages = st.multiselect("Select languages for subtitles", languages, default=languages)
+            
+            # Map language names to OpenAI language codes
+            language_codes = {"English": "en", "Spanish": "es"}
+            
+            if not selected_languages:
+                st.warning("Please select at least one language for subtitles.")
+                return
+            
+            # Create a placeholder to show progress
+            progress_bar = st.progress(0)
+            total_languages = len(selected_languages)
+            current_progress = 0
+            
+            # Dictionary to store subtitles
+            subtitles = {}
+            
+            for language in selected_languages:
+                code = language_codes[language]
+                st.write(f"Transcribing audio to {language}...")
+                try:
+                    subtitle_content = generate_subtitles(audio_file_path, code, client)
+                    if not subtitle_content:
+                        st.error(f"Failed to generate subtitles for {language}.")
+                        continue  # Skip adding a download button for this language
+                    st.write(f"Subtitles in {language} generated successfully.")
+                    subtitles[language] = subtitle_content
+                except Exception as e:
+                    st.error(f"Error generating subtitles in {language}: {e}")
+                current_progress += 1
+                progress_bar.progress(current_progress / total_languages)
+            
+            # Provide download buttons for subtitles
+            st.write("### Download Subtitles")
+            for language in subtitles:
+                subtitle_content = subtitles[language]
+                if subtitle_content:
+                    srt_filename = f"subtitles_{language}.srt"
                     st.download_button(
-                        label=f"Download Video with {language_to_embed} Subtitles", 
-                        data=video_bytes, 
-                        file_name=f"video_with_{language_to_embed}_subtitles.mp4",
-                        mime="video/mp4"
+                        label=f"Download {language} Subtitles (.srt)", 
+                        data=subtitle_content, 
+                        file_name=srt_filename,
+                        mime="text/plain"
                     )
-            except Exception as e:
-                st.error(f"Error embedding subtitles: {e}")
-        else:
-            st.write("Subtitles not embedded.")
+                else:
+                    st.warning(f"No subtitles available for {language}.")
+            
+            # Option to embed subtitles into the video
+            st.write("### Embed Subtitles into Video")
+            embed_option = st.radio("Do you want to embed subtitles into the video?", ["No", "Yes"])
+            
+            if embed_option == "Yes":
+                if not subtitles:
+                    st.warning("No subtitles available to embed.")
+                else:
+                    language_to_embed = st.selectbox("Select language to embed into video", list(subtitles.keys()))
+                    st.write(f"Embedding {language_to_embed} subtitles into the video...")
+                    try:
+                        subtitled_video_path = embed_subtitles_into_video(tfile.name, subtitles[language_to_embed], language_to_embed)
+                        st.video(subtitled_video_path)
+                        # Provide download button
+                        with open(subtitled_video_path, 'rb') as f:
+                            video_bytes = f.read()
+                            st.download_button(
+                                label=f"Download Video with {language_to_embed} Subtitles", 
+                                data=video_bytes, 
+                                file_name=f"video_with_{language_to_embed}_subtitles.mp4",
+                                mime="video/mp4"
+                            )
+                    except Exception as e:
+                        st.error(f"Error embedding subtitles: {e}")
+            else:
+                st.write("Subtitles not embedded.")
         
-        # Clean up temporary files
-        if os.path.exists(audio_file_path):
-            os.unlink(audio_file_path)
-        if os.path.exists(tfile.name):
-            os.unlink(tfile.name)
+        finally:
+            # Clean up temporary files
+            if os.path.exists(tfile.name):
+                os.unlink(tfile.name)
+            if 'audio_file_path' in locals() and os.path.exists(audio_file_path):
+                os.unlink(audio_file_path)
+            if 'subtitled_video_path' in locals() and os.path.exists(subtitled_video_path):
+                os.unlink(subtitled_video_path)
     else:
         st.write("Please upload a video file.")
 
@@ -139,8 +152,9 @@ def generate_subtitles(audio_file_path, language_code, client):
                 response_format="srt",
                 language=language_code
             )
-            return response['text']  # The response contains the SRT content as text
+            return response  # Return the SRT string directly
         except Exception as e:
+            logging.error(f"Error during transcription for language {language_code}: {e}")
             st.error(f"Error during transcription: {e}")
             return None
 
@@ -176,6 +190,10 @@ def embed_subtitles_into_video(video_file_path, subtitle_content, language):
     if result.returncode != 0:
         error_message = result.stderr.decode()
         raise Exception(f"ffmpeg error: {error_message}")
+    
+    # Clean up the subtitle file
+    if os.path.exists(subtitle_file.name):
+        os.unlink(subtitle_file.name)
     
     # Return the path to the output video file
     return output_video_file.name
