@@ -8,6 +8,7 @@ import streamlit as st
 import openai
 import logging
 import uuid
+from tenacity import retry, wait_fixed, stop_after_attempt
 
 # Configure logging
 logging.basicConfig(
@@ -36,7 +37,7 @@ def is_url_accessible(url, method='HEAD', timeout=10):
             response = requests.head(url, timeout=timeout)
         else:
             response = requests.get(url, timeout=timeout)
-        accessible = response.status_code == 200
+        accessible = 200 <= response.status_code < 400
         logger.info(f"URL accessibility check for {url}: {accessible}")
         return accessible
     except requests.RequestException as e:
@@ -60,7 +61,8 @@ def upload_file_to_s3(file_path, s3_client, bucket_name, region, folder='files',
         str: Public URL of the uploaded file.
     """
     file_name = os.path.basename(file_path)
-    s3_key = f"{folder}/{file_name}"
+    unique_filename = generate_unique_filename(file_name)
+    s3_key = f"{folder}/{unique_filename}"
     
     try:
         s3_client.upload_file(
@@ -118,6 +120,7 @@ def clean_up_files(file_paths):
             except Exception as e:
                 logger.error(f"Failed to delete {file_path}: {e}")
 
+@retry(wait=wait_fixed(2), stop=stop_after_attempt(3))
 def generate_caption(image_url, model="gpt-4"):
     """
     Generates a caption for an image using OpenAI's ChatCompletion API.
@@ -171,6 +174,7 @@ people can semantically search for scenes. Ensure your captions include:
         logger.error(f"Unexpected Error while generating caption: {e}")
         return None
 
+@retry(wait=wait_fixed(2), stop=stop_after_attempt(3))
 def get_embedding(text, model="text-embedding-ada-002"):
     """
     Generates an embedding vector for the given text using OpenAI's Embeddings API.
