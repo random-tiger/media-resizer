@@ -141,6 +141,23 @@ def video_uploader():
         # Resize method
         resize_method = st.radio("Select Resize Method", ["Crop", "Pad (Add borders)"])
 
+        # Initialize crop position only if the resize method is Crop
+        if resize_method == "Crop":
+            crop_positions = [
+                "Center",
+                "Top",
+                "Bottom",
+                "Left",
+                "Right",
+                "Top-Left",
+                "Top-Right",
+                "Bottom-Left",
+                "Bottom-Right"
+            ]
+            crop_position = st.selectbox("Select Crop Position", crop_positions)
+        else:
+            crop_position = None  # Not applicable
+
         output_format = st.selectbox("Output Format", ["mp4", "avi", "mov", "mkv"])
 
         if st.button("Resize and Convert Video"):
@@ -167,20 +184,8 @@ def video_uploader():
                 resized_clip = clip.resize(newsize=(new_width, new_height))
 
                 if resize_method == "Crop":
-                    # Crop to desired dimensions
-                    x_center = new_width / 2
-                    y_center = new_height / 2
-                    x1 = x_center - target_width / 2
-                    y1 = y_center - target_height / 2
-                    x2 = x_center + target_width / 2
-                    y2 = y_center + target_height / 2
-
-                    final_clip = resized_clip.crop(
-                        x1=max(0, x1),
-                        y1=max(0, y1),
-                        x2=min(new_width, x2),
-                        y2=min(new_height, y2)
-                    )
+                    # Determine crop coordinates based on selected crop position
+                    final_clip = apply_crop(resized_clip, target_width, target_height, crop_position)
                 else:
                     # Pad to desired dimensions
                     pad_width = target_width - new_width
@@ -254,3 +259,83 @@ def video_uploader():
                 # Clean up temporary files and release resources
                 clip.close()
                 clean_up_files([input_video_path, output_video_path])
+
+def apply_crop(clip, target_width, target_height, position):
+    """
+    Apply cropping to the video clip based on the selected position.
+
+    Args:
+        clip (moviepy.editor.VideoFileClip): The resized video clip.
+        target_width (int): The desired width after cropping.
+        target_height (int): The desired height after cropping.
+        position (str): The crop position selected by the user.
+
+    Returns:
+        moviepy.editor.VideoFileClip: The cropped video clip.
+    """
+    new_width, new_height = clip.size
+    if new_width < target_width or new_height < target_height:
+        # If the resized clip is smaller than target, pad instead of cropping
+        pad_width = target_width - new_width
+        pad_height = target_height - new_height
+
+        pad_left = pad_width // 2 if pad_width > 0 else 0
+        pad_right = pad_width - pad_left if pad_width > 0 else 0
+        pad_top = pad_height // 2 if pad_height > 0 else 0
+        pad_bottom = pad_height - pad_top if pad_height > 0 else 0
+
+        return margin(
+            clip,
+            left=pad_left,
+            right=pad_right,
+            top=pad_top,
+            bottom=pad_bottom,
+            color=(0, 0, 0)
+        )
+
+    # Calculate cropping coordinates based on position
+    if position == "Center":
+        x1 = (new_width - target_width) / 2
+        y1 = (new_height - target_height) / 2
+    elif position == "Top":
+        x1 = (new_width - target_width) / 2
+        y1 = 0
+    elif position == "Bottom":
+        x1 = (new_width - target_width) / 2
+        y1 = new_height - target_height
+    elif position == "Left":
+        x1 = 0
+        y1 = (new_height - target_height) / 2
+    elif position == "Right":
+        x1 = new_width - target_width
+        y1 = (new_height - target_height) / 2
+    elif position == "Top-Left":
+        x1 = 0
+        y1 = 0
+    elif position == "Top-Right":
+        x1 = new_width - target_width
+        y1 = 0
+    elif position == "Bottom-Left":
+        x1 = 0
+        y1 = new_height - target_height
+    elif position == "Bottom-Right":
+        x1 = new_width - target_width
+        y1 = new_height - target_height
+    else:
+        # Default to center if position is unrecognized
+        x1 = (new_width - target_width) / 2
+        y1 = (new_height - target_height) / 2
+
+    x2 = x1 + target_width
+    y2 = y1 + target_height
+
+    # Ensure coordinates are within the frame
+    x1 = max(0, x1)
+    y1 = max(0, y1)
+    x2 = min(new_width, x2)
+    y2 = min(new_height, y2)
+
+    # Apply cropping
+    final_clip = clip.crop(x1=x1, y1=y1, x2=x2, y2=y2)
+
+    return final_clip
