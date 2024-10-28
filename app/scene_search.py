@@ -1,17 +1,24 @@
 # app/scene_search.py
 
+from utils import upload_file_to_s3, is_url_accessible, clean_up_files
+from utils import generate_caption, get_embedding
 import streamlit as st
+import moviepy.editor as mp
 import tempfile
 import os
 import subprocess
+import platform
+import boto3
+import cv2
+import numpy as np
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
-import boto3
 from scenedetect import open_video, SceneManager
 from scenedetect.detectors import ContentDetector
-from utils import upload_file_to_s3, is_url_accessible, clean_up_files
-from utils import generate_caption, get_embedding
+from moviepy.video.fx.all import margin
+from PIL import Image
 from openai import OpenAI
+import requests
 
 def scene_search_mode():
     st.header("Scene Search")
