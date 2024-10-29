@@ -6,14 +6,18 @@ import tempfile
 import os
 from moviepy.video.fx.all import margin
 from utils import clean_up_files
-from streamlit_drawable_canvas import st_canvas
-import numpy as np
+from streamlit_image_coordinates import streamlit_image_coordinates
 from PIL import Image
 
 def video_uploader():
-    st.title("📹 Video Resizer with Interactive Cropping")
-    
-    uploaded_video = st.file_uploader("Choose a video file", type=["mp4", "avi", "mov", "mkv"])
+    st.title("📹 Video Resizer: Pad or Crop")
+
+    # File uploader with size limitation
+    uploaded_video = st.file_uploader(
+        "Choose a video file",
+        type=["mp4", "avi", "mov", "mkv"],
+        accept_multiple_files=False
+    )
     if uploaded_video is not None:
         # Limit file size to prevent server overload (e.g., 500MB)
         max_file_size = 500 * 1024 * 1024  # 500 MB
@@ -150,18 +154,14 @@ def video_uploader():
         st.markdown(f"**Target Dimensions:** {target_width} x {target_height} pixels")
 
         # Resize method
-        resize_method = st.radio("Select Resize Method", ["Crop", "Pad (Add borders)"])
+        resize_method = st.radio("Select Resize Method", ["Pad (Add Borders)", "Crop"])
 
         # Initialize crop variables
-        absolute_x = None
-        absolute_y = None
-        absolute_w = None
-        absolute_h = None
+        reference_point = None  # (x, y) in original video dimensions
 
-        # Initialize crop position only if the resize method is Crop
         if resize_method == "Crop":
-            st.write("#### Select Crop Area")
-            st.write("Use the rectangle tool to select the area you want to retain in the video.")
+            st.write("#### Select Crop Reference Point")
+            st.write("Click on the video thumbnail to set the center point for cropping.")
 
             # Extract a thumbnail frame (e.g., at 1 second)
             try:
@@ -171,118 +171,173 @@ def video_uploader():
                 display_scale = 0.5
                 display_width = int(original_width * display_scale)
                 display_height = int(original_height * display_scale)
-                thumbnail_image = thumbnail_image.resize((display_width, display_height))
+                thumbnail_image_resized = thumbnail_image.resize((display_width, display_height))
             except Exception as e:
                 st.error(f"An error occurred while extracting a thumbnail frame: {e}")
                 clean_up_files([input_video_path])
                 return
 
-            # Define canvas dimensions
-            canvas_width = display_width
-            canvas_height = display_height
+            # Display the thumbnail and capture click coordinates
+            click_coords = streamlit_image_coordinates(thumbnail_image_resized)
 
-            # Initialize the canvas without 'drawing_mode_options'
-            canvas_result = st_canvas(
-                fill_color="rgba(0, 0, 0, 0)",  # Transparent
-                stroke_width=2,
-                stroke_color="#FF0000",
-                background_image=thumbnail_image,
-                update_streamlit=True,
-                height=canvas_height,
-                width=canvas_width,
-                drawing_mode="rect",
-                key="crop_canvas",
-                # Allow only one rectangle by enforcing no multiple objects
-                # No 'drawing_mode_options' parameter
-            )
+            if click_coords:
+                # Calculate the reference point in original video dimensions
+                rel_x = click_coords['x'] / display_width
+                rel_y = click_coords['y'] / display_height
 
-            # Function to ensure only one rectangle exists
-            def get_single_rect(canvas_result):
-                if canvas_result.json_data is not None:
-                    objects = canvas_result.json_data["objects"]
-                    if len(objects) > 1:
-                        # Keep only the last rectangle
-                        objects = [objects[-1]]
-                        return {"objects": objects}
-                return canvas_result.json_data
+                reference_x = int(rel_x * original_width)
+                reference_y = int(rel_y * original_height)
 
-            # Enforce single rectangle
-            if canvas_result.json_data is not None:
-                canvas_result.json_data = get_single_rect(canvas_result)
+                reference_point = (reference_x, reference_y)
 
-            # If the user has drawn a rectangle, capture the coordinates
-            if canvas_result.json_data is not None and canvas_result.json_data["objects"]:
-                obj = canvas_result.json_data["objects"][0]
-                # Coordinates are relative to the displayed thumbnail
-                rel_x = obj["left"] / canvas_width
-                rel_y = obj["top"] / canvas_height
-                rel_w = obj["width"] / canvas_width
-                rel_h = obj["height"] / canvas_height
+                st.markdown(f"**Selected Reference Point:** ({reference_x}, {reference_y})")
 
-                # Calculate absolute coordinates based on original video size
-                absolute_x = int(rel_x * original_width)
-                absolute_y = int(rel_y * original_height)
-                absolute_w = int(rel_w * original_width)
-                absolute_h = int(rel_h * original_height)
+                # Aspect Ratio or Dimensions input
+                crop_option = st.radio("Specify Crop By", ["Aspect Ratio", "Exact Dimensions"])
 
-                # Ensure the crop area is within the video dimensions
-                absolute_x = max(0, absolute_x)
-                absolute_y = max(0, absolute_y)
-                absolute_w = min(original_width - absolute_x, absolute_w)
-                absolute_h = min(original_height - absolute_y, absolute_h)
+                if crop_option == "Aspect Ratio":
+                    aspect_ratio_input = st.text_input(
+                        "Enter Aspect Ratio (e.g., 16:9)",
+                        value="16:9"
+                    )
+                    try:
+                        ar_w, ar_h = map(float, aspect_ratio_input.split(':'))
+                        desired_aspect_ratio = ar_w / ar_h
+                    except:
+                        st.error("Invalid aspect ratio format. Please use W:H (e.g., 16:9).")
+                        desired_aspect_ratio = None
 
-                # Display the selected crop area size
-                st.markdown(f"**Selected Crop Area Size:** {absolute_w} x {absolute_h} pixels")
-            else:
-                st.warning("Please draw a rectangle on the thumbnail to select the crop area.")
-                absolute_x = None
-                absolute_y = None
-                absolute_w = None
-                absolute_h = None
-        else:
-            absolute_x = None
-            absolute_y = None
-            absolute_w = None
-            absolute_h = None
+                else:
+                    exact_width = st.number_input(
+                        "Enter Desired Width (pixels)",
+                        min_value=1,
+                        value=target_width,
+                        step=1
+                    )
+                    exact_height = st.number_input(
+                        "Enter Desired Height (pixels)",
+                        min_value=1,
+                        value=target_height,
+                        step=1
+                    )
+                    desired_aspect_ratio = exact_width / exact_height if exact_height != 0 else None
+
+                if desired_aspect_ratio:
+                    st.markdown(f"**Desired Aspect Ratio:** {desired_aspect_ratio:.2f}")
 
         output_format = st.selectbox("Output Format", ["mp4", "avi", "mov", "mkv"])
 
         if st.button("Resize and Convert Video"):
             with st.spinner("Processing video..."):
                 try:
-                    # Determine target dimensions (already set based on aspect ratio)
-                    # If cropping, use the selected crop area
                     if resize_method == "Crop":
-                        if None in [absolute_x, absolute_y, absolute_w, absolute_h]:
-                            st.error("Please select a crop area before proceeding.")
+                        if not reference_point:
+                            st.error("Please click on the thumbnail to set the reference point for cropping.")
                             return
 
-                        # Crop the entire video based on selected coordinates
-                        final_clip = clip.crop(x1=absolute_x, y1=absolute_y, x2=absolute_x + absolute_w, y2=absolute_y + absolute_h)
+                        if crop_option == "Aspect Ratio":
+                            if not desired_aspect_ratio:
+                                st.error("Invalid aspect ratio. Please enter in W:H format (e.g., 16:9).")
+                                return
 
-                        # Optionally, resize to target dimensions if different
-                        if (final_clip.w != target_width) or (final_clip.h != target_height):
-                            final_clip = final_clip.resize(newsize=(target_width, target_height))
+                            # Calculate crop dimensions based on aspect ratio
+                            # We can set either width or height based on the aspect ratio and ensure it's within video bounds
+                            # For simplicity, let's choose the largest possible area around the reference point
+
+                            # Determine the maximum possible width and height from the reference point
+                            max_left = reference_point[0]
+                            max_right = original_width - reference_point[0]
+                            max_top = reference_point[1]
+                            max_bottom = original_height - reference_point[1]
+
+                            # Calculate maximum width and height based on aspect ratio
+                            # Width is determined by height * aspect_ratio
+                            # Height is determined by width / aspect_ratio
+
+                            # Start with the maximum possible height
+                            max_possible_height = min(max_top, max_bottom) * 2
+                            calculated_width = max_possible_height * desired_aspect_ratio
+                            if calculated_width > min(max_left, max_right) * 2:
+                                # Adjust height based on width
+                                calculated_width = min(max_left, max_right) * 2
+                                calculated_height = calculated_width / desired_aspect_ratio
+                            else:
+                                calculated_height = max_possible_height
+
+                            crop_width = int(calculated_width)
+                            crop_height = int(calculated_height)
+
+                            # Calculate top-left corner of the crop rectangle
+                            crop_x1 = reference_point[0] - crop_width // 2
+                            crop_y1 = reference_point[1] - crop_height // 2
+
+                            # Ensure crop rectangle is within video boundaries
+                            crop_x1 = max(0, crop_x1)
+                            crop_y1 = max(0, crop_y1)
+                            crop_x2 = min(original_width, crop_x1 + crop_width)
+                            crop_y2 = min(original_height, crop_y1 + crop_height)
+
+                            # Adjust if crop area is smaller than desired due to boundary limits
+                            crop_width = crop_x2 - crop_x1
+                            crop_height = crop_y2 - crop_y1
+
+                            # Display the crop area size
+                            st.markdown(f"**Final Crop Area Size:** {crop_width} x {crop_height} pixels")
+
+                            # Perform cropping
+                            final_clip = clip.crop(x1=crop_x1, y1=crop_y1, x2=crop_x2, y2=crop_y2)
+
+                        else:
+                            # Exact Dimensions
+                            desired_width = int(exact_width)
+                            desired_height = int(exact_height)
+
+                            # Calculate top-left corner based on reference point
+                            crop_x1 = reference_point[0] - desired_width // 2
+                            crop_y1 = reference_point[1] - desired_height // 2
+                            crop_x2 = crop_x1 + desired_width
+                            crop_y2 = crop_y1 + desired_height
+
+                            # Ensure crop rectangle is within video boundaries
+                            if crop_x1 < 0:
+                                crop_x1 = 0
+                                crop_x2 = desired_width
+                            if crop_y1 < 0:
+                                crop_y1 = 0
+                                crop_y2 = desired_height
+                            if crop_x2 > original_width:
+                                crop_x2 = original_width
+                                crop_x1 = original_width - desired_width
+                            if crop_y2 > original_height:
+                                crop_y2 = original_height
+                                crop_y1 = original_height - desired_height
+
+                            # Perform cropping
+                            final_clip = clip.crop(x1=crop_x1, y1=crop_y1, x2=crop_x2, y2=crop_y2)
+
                     else:
-                        # For padding, calculate scaling factor
-                        scale_factor_w = target_width / clip.w
-                        scale_factor_h = target_height / clip.h
+                        # Pad (Add Borders)
+                        # Calculate scaling factor to fit the video within target dimensions
+                        scale_factor_w = target_width / original_width
+                        scale_factor_h = target_height / original_height
                         scale_factor = min(scale_factor_w, scale_factor_h)
 
-                        new_width = int(clip.w * scale_factor)
-                        new_height = int(clip.h * scale_factor)
+                        new_width = int(original_width * scale_factor)
+                        new_height = int(original_height * scale_factor)
 
+                        # Resize the clip
                         resized_clip = clip.resize(newsize=(new_width, new_height))
 
-                        # Pad to desired dimensions
+                        # Calculate padding
                         pad_width = target_width - new_width
                         pad_height = target_height - new_height
 
-                        pad_left = pad_width // 2 if pad_width > 0 else 0
-                        pad_right = pad_width - pad_left if pad_width > 0 else 0
-                        pad_top = pad_height // 2 if pad_height > 0 else 0
-                        pad_bottom = pad_height - pad_top if pad_height > 0 else 0
+                        pad_left = pad_width // 2
+                        pad_right = pad_width - pad_left
+                        pad_top = pad_height // 2
+                        pad_bottom = pad_height - pad_top
 
+                        # Apply padding
                         final_clip = margin(
                             resized_clip,
                             left=pad_left,
