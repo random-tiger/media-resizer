@@ -15,6 +15,12 @@ def video_uploader():
     
     uploaded_video = st.file_uploader("Choose a video file", type=["mp4", "avi", "mov", "mkv"])
     if uploaded_video is not None:
+        # Limit file size to prevent server overload (e.g., 500MB)
+        max_file_size = 500 * 1024 * 1024  # 500 MB
+        if uploaded_video.size > max_file_size:
+            st.error("File size exceeds the maximum limit of 500MB.")
+            return
+
         # Save uploaded video to a temporary file
         tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
         tfile.write(uploaded_video.read())
@@ -186,7 +192,25 @@ def video_uploader():
                 width=canvas_width,
                 drawing_mode="rect",
                 key="crop_canvas",
+                # Allow only one rectangle
+                initial_drawing=None,
+                # Provide transparency
+                drawing_mode_options={"width": 2, "stroke_color": "#FF0000"},
             )
+
+            # Function to ensure only one rectangle exists
+            def get_single_rect(canvas_result):
+                if canvas_result.json_data is not None:
+                    objects = canvas_result.json_data["objects"]
+                    if len(objects) > 1:
+                        # Keep only the last rectangle
+                        objects = [objects[-1]]
+                        return {"objects": objects}
+                return canvas_result.json_data
+
+            # Enforce single rectangle
+            if canvas_result.json_data is not None:
+                canvas_result.json_data = get_single_rect(canvas_result)
 
             # If the user has drawn a rectangle, capture the coordinates
             if canvas_result.json_data is not None and canvas_result.json_data["objects"]:
@@ -316,6 +340,8 @@ def video_uploader():
                             file_name='resized_video.' + output_format,
                             mime=f'video/{output_format}'
                         )
+
+                    st.success("Video processed successfully!")
 
                 except Exception as e:
                     st.error(f"An error occurred during video processing: {e}")
