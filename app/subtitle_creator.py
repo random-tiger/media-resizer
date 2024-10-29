@@ -9,6 +9,10 @@ import platform
 import logging
 from utils import clean_up_files
 from openai import OpenAI
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,11 +20,13 @@ logging.basicConfig(level=logging.INFO)
 def subtitle_creation_mode():
     st.header("Subtitle Creator")
     
-    # Check for OpenAI API key in st.secrets
-    if "OPENAI_API_KEY" in st.secrets:
-        client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+    # Retrieve OpenAI API key from environment variables
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    
+    if openai_api_key:
+        client = OpenAI(api_key=openai_api_key)
     else:
-        st.error("OpenAI API key not found in st.secrets. Please add it to your Streamlit secrets.")
+        st.error("OpenAI API key not found in environment variables. Please set it in the .env file.")
         return
     
     # Prompt user to upload a video file
@@ -145,8 +151,6 @@ def subtitle_creation_mode():
             if 'audio_file_path' in locals() and os.path.exists(audio_file_path):
                 os.unlink(audio_file_path)
             # Note: subtitled_video_path is already cleaned up in the 'finally' block above
-    else:
-        st.write("Please upload a video file.")
 
 def extract_audio(video_file_path):
     # Use moviepy to extract audio
