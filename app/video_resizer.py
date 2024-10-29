@@ -181,7 +181,7 @@ def video_uploader():
             canvas_width = display_width
             canvas_height = display_height
 
-            # Initialize the canvas
+            # Initialize the canvas without 'drawing_mode_options'
             canvas_result = st_canvas(
                 fill_color="rgba(0, 0, 0, 0)",  # Transparent
                 stroke_width=2,
@@ -192,10 +192,8 @@ def video_uploader():
                 width=canvas_width,
                 drawing_mode="rect",
                 key="crop_canvas",
-                # Allow only one rectangle
-                initial_drawing=None,
-                # Provide transparency
-                drawing_mode_options={"width": 2, "stroke_color": "#FF0000"},
+                # Allow only one rectangle by enforcing no multiple objects
+                # No 'drawing_mode_options' parameter
             )
 
             # Function to ensure only one rectangle exists
