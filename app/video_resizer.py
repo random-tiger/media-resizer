@@ -6,8 +6,13 @@ import tempfile
 import os
 from moviepy.video.fx.all import margin
 from utils import clean_up_files
+from streamlit_drawable_canvas import st_canvas
+import numpy as np
+from PIL import Image
 
 def video_uploader():
+    st.title("📹 Video Resizer with Interactive Cropping")
+    
     uploaded_video = st.file_uploader("Choose a video file", type=["mp4", "avi", "mov", "mkv"])
     if uploaded_video is not None:
         # Save uploaded video to a temporary file
@@ -143,122 +148,167 @@ def video_uploader():
 
         # Initialize crop position only if the resize method is Crop
         if resize_method == "Crop":
-            crop_positions = [
-                "Center",
-                "Top",
-                "Bottom",
-                "Left",
-                "Right",
-                "Top-Left",
-                "Top-Right",
-                "Bottom-Left",
-                "Bottom-Right"
-            ]
-            crop_position = st.selectbox("Select Crop Position", crop_positions)
+            st.write("#### Select Crop Area")
+            st.write("Use the rectangle tool to select the area you want to retain in the video.")
+            
+            # Extract a thumbnail frame (e.g., at 1 second)
+            try:
+                thumbnail_frame = clip.get_frame(1)  # Get frame at 1 second
+                thumbnail_image = Image.fromarray(thumbnail_frame)
+                thumbnail_image = thumbnail_image.resize((int(original_width * 0.5), int(original_height * 0.5)))  # Resize for display
+            except Exception as e:
+                st.error(f"An error occurred while extracting a thumbnail frame: {e}")
+                clean_up_files([input_video_path])
+                return
+
+            # Define canvas parameters
+            canvas_result = st_canvas(
+                fill_color="rgba(0, 0, 0, 0)",  # Transparent
+                stroke_width=2,
+                stroke_color="#FF0000",
+                background_image=thumbnail_image,
+                update_streamlit=True,
+                height=int(original_height * 0.5),
+                width=int(original_width * 0.5),
+                drawing_mode="rect",
+                key="crop_canvas",
+            )
+
+            # If the user has drawn a rectangle, capture the coordinates
+            if canvas_result.json_data is not None and canvas_result.json_data["objects"]:
+                obj = canvas_result.json_data["objects"][0]
+                # Coordinates are relative to the displayed thumbnail
+                rel_x = obj["left"] / canvas_result.width
+                rel_y = obj["top"] / canvas_result.height
+                rel_w = obj["width"] / canvas_result.width
+                rel_h = obj["height"] / canvas_result.height
+
+                # Calculate absolute coordinates based on original video size
+                absolute_x = int(rel_x * original_width)
+                absolute_y = int(rel_y * original_height)
+                absolute_w = int(rel_w * original_width)
+                absolute_h = int(rel_h * original_height)
+
+                # Ensure the crop area is within the video dimensions
+                absolute_x = max(0, absolute_x)
+                absolute_y = max(0, absolute_y)
+                absolute_w = min(original_width - absolute_x, absolute_w)
+                absolute_h = min(original_height - absolute_y, absolute_h)
+
+                # Display the selected crop area
+                st.markdown(f"**Selected Crop Area:** {absolute_x}, {absolute_y}, {absolute_w}, {absolute_h}")
+            else:
+                st.warning("Please draw a rectangle on the thumbnail to select the crop area.")
+                absolute_x = None
+                absolute_y = None
+                absolute_w = None
+                absolute_h = None
         else:
-            crop_position = None  # Not applicable
+            absolute_x = None
+            absolute_y = None
+            absolute_w = None
+            absolute_h = None
 
         output_format = st.selectbox("Output Format", ["mp4", "avi", "mov", "mkv"])
 
         if st.button("Resize and Convert Video"):
-            try:
-                # Use target_width and target_height
-                target_width = target_width
-                target_height = target_height
+            with st.spinner("Processing video..."):
+                try:
+                    # Determine target dimensions (already set based on aspect ratio)
+                    # If cropping, use the selected crop area
+                    if resize_method == "Crop":
+                        if None in [absolute_x, absolute_y, absolute_w, absolute_h]:
+                            st.error("Please select a crop area before proceeding.")
+                            return
 
-                # Calculate scaling factor based on resize method
-                if resize_method == "Crop":
-                    # For cropping, scale up to ensure dimensions are larger
-                    scale_factor_w = target_width / clip.w
-                    scale_factor_h = target_height / clip.h
-                    scale_factor = max(scale_factor_w, scale_factor_h)
-                else:
-                    # For padding, scale down to ensure dimensions are smaller
-                    scale_factor_w = target_width / clip.w
-                    scale_factor_h = target_height / clip.h
-                    scale_factor = min(scale_factor_w, scale_factor_h)
+                        # Crop the entire video based on selected coordinates
+                        final_clip = clip.crop(x1=absolute_x, y1=absolute_y, x2=absolute_x + absolute_w, y2=absolute_y + absolute_h)
 
-                new_width = int(clip.w * scale_factor)
-                new_height = int(clip.h * scale_factor)
+                        # Optionally, resize to target dimensions if different
+                        if (final_clip.w != target_width) or (final_clip.h != target_height):
+                            final_clip = final_clip.resize(newsize=(target_width, target_height))
+                    else:
+                        # For padding, calculate scaling factor
+                        scale_factor_w = target_width / clip.w
+                        scale_factor_h = target_height / clip.h
+                        scale_factor = min(scale_factor_w, scale_factor_h)
 
-                resized_clip = clip.resize(newsize=(new_width, new_height))
+                        new_width = int(clip.w * scale_factor)
+                        new_height = int(clip.h * scale_factor)
 
-                if resize_method == "Crop":
-                    # Determine crop coordinates based on selected crop position
-                    final_clip = apply_crop(resized_clip, target_width, target_height, crop_position)
-                else:
-                    # Pad to desired dimensions
-                    pad_width = target_width - new_width
-                    pad_height = target_height - new_height
+                        resized_clip = clip.resize(newsize=(new_width, new_height))
 
-                    # Ensure pad sizes are non-negative
-                    pad_left = int(pad_width / 2) if pad_width > 0 else 0
-                    pad_right = pad_width - pad_left if pad_width > 0 else 0
-                    pad_top = int(pad_height / 2) if pad_height > 0 else 0
-                    pad_bottom = pad_height - pad_top if pad_height > 0 else 0
+                        # Pad to desired dimensions
+                        pad_width = target_width - new_width
+                        pad_height = target_height - new_height
 
-                    final_clip = margin(
-                        resized_clip,
-                        left=pad_left,
-                        right=pad_right,
-                        top=pad_top,
-                        bottom=pad_bottom,
-                        color=(0, 0, 0)
+                        pad_left = pad_width // 2 if pad_width > 0 else 0
+                        pad_right = pad_width - pad_left if pad_width > 0 else 0
+                        pad_top = pad_height // 2 if pad_height > 0 else 0
+                        pad_bottom = pad_height - pad_top if pad_height > 0 else 0
+
+                        final_clip = margin(
+                            resized_clip,
+                            left=pad_left,
+                            right=pad_right,
+                            top=pad_top,
+                            bottom=pad_bottom,
+                            color=(0, 0, 0)
+                        )
+
+                    # Save to a temporary file
+                    temp_video_file = tempfile.NamedTemporaryFile(delete=False, suffix='.' + output_format)
+                    output_video_path = temp_video_file.name
+                    temp_video_file.close()  # Close the file so MoviePy can write to it
+
+                    # Determine the audio codec based on the output format
+                    if output_format == 'mp4':
+                        video_codec = 'libx264'
+                        audio_codec = 'aac'
+                    elif output_format == 'avi':
+                        video_codec = 'mpeg4'
+                        audio_codec = 'mp3'
+                    elif output_format == 'mov':
+                        video_codec = 'libx264'
+                        audio_codec = 'aac'
+                    elif output_format == 'mkv':
+                        video_codec = 'libx264'
+                        audio_codec = 'aac'
+                    else:
+                        video_codec = 'libx264'
+                        audio_codec = 'aac'
+
+                    # Use faster encoding preset and other optimizations
+                    ffmpeg_params = ['-preset', 'ultrafast', '-ac', '2']
+                    final_clip.write_videofile(
+                        output_video_path,
+                        codec=video_codec,
+                        audio_codec=audio_codec,
+                        audio=True,
+                        threads=6,  # Adjust based on your CPU
+                        ffmpeg_params=ffmpeg_params,
+                        logger=None  # Suppress verbose output
                     )
 
-                # Save to a temporary file
-                temp_video_file = tempfile.NamedTemporaryFile(delete=False, suffix='.' + output_format)
-                output_video_path = temp_video_file.name
-                temp_video_file.close()  # Close the file so MoviePy can write to it
+                    # Display the resized video
+                    st.write("### Resized Video Preview")
+                    st.video(output_video_path)
 
-                # Determine the audio codec based on the output format
-                if output_format == 'mp4':
-                    video_codec = 'libx264'
-                    audio_codec = 'aac'
-                elif output_format == 'avi':
-                    video_codec = 'mpeg4'
-                    audio_codec = 'mp3'
-                elif output_format == 'mov':
-                    video_codec = 'libx264'
-                    audio_codec = 'aac'
-                elif output_format == 'mkv':
-                    video_codec = 'libx264'
-                    audio_codec = 'aac'
-                else:
-                    video_codec = 'libx264'
-                    audio_codec = 'aac'
+                    # Provide download link
+                    with open(output_video_path, 'rb') as f:
+                        st.download_button(
+                            label='Download Resized Video', 
+                            data=f, 
+                            file_name='resized_video.' + output_format,
+                            mime=f'video/{output_format}'
+                        )
 
-                # Use faster encoding preset and other optimizations
-                ffmpeg_params = ['-preset', 'ultrafast', '-ac', '2']
-                final_clip.write_videofile(
-                    output_video_path,
-                    codec=video_codec,
-                    audio_codec=audio_codec,
-                    audio=True,
-                    threads=6,  # Adjust based on your CPU
-                    ffmpeg_params=ffmpeg_params,
-                    logger=None  # Suppress verbose output
-                )
-
-                # Display the resized video
-                st.write("### Resized Video Preview")
-                st.video(output_video_path)
-
-                # Provide download link
-                with open(output_video_path, 'rb') as f:
-                    st.download_button(
-                        label='Download Resized Video', 
-                        data=f, 
-                        file_name='resized_video.' + output_format,
-                        mime=f'video/{output_format}'
-                    )
-
-            except Exception as e:
-                st.error(f"An error occurred during video processing: {e}")
-            finally:
-                # Clean up temporary files and release resources
-                clip.close()
-                clean_up_files([input_video_path, output_video_path])
+                except Exception as e:
+                    st.error(f"An error occurred during video processing: {e}")
+                finally:
+                    # Clean up temporary files and release resources
+                    clip.close()
+                    clean_up_files([input_video_path, output_video_path])
 
 def apply_crop(clip, target_width, target_height, position):
     """
