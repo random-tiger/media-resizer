@@ -19,104 +19,130 @@ from moviepy.video.fx.all import margin
 from PIL import Image
 from openai import OpenAI
 import requests
+from dotenv import load_dotenv  # Import dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Configure logging
+import logging
+logging.basicConfig(level=logging.INFO)
 
 def scene_search_mode():
     st.header("Scene Search")
     
-    # Check for AWS credentials and OpenAI API key in st.secrets
-    if ("AWS_ACCESS_KEY_ID" in st.secrets and 
-        "AWS_SECRET_ACCESS_KEY" in st.secrets and
-        "AWS_S3_BUCKET_NAME" in st.secrets and
-        "OPENAI_API_KEY" in st.secrets):
-        
-        aws_access_key_id = st.secrets["AWS_ACCESS_KEY_ID"]
-        aws_secret_access_key = st.secrets["AWS_SECRET_ACCESS_KEY"]
-        s3_bucket_name = st.secrets["AWS_S3_BUCKET_NAME"]
-        s3_region = st.secrets.get("AWS_REGION", "us-east-1")
-        openai_api_key = st.secrets["OPENAI_API_KEY"]
-    else:
-        st.error("AWS credentials or OpenAI API key not found in st.secrets. Please add them to your Streamlit secrets.")
+    # Retrieve AWS credentials and OpenAI API key from environment variables
+    aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    s3_bucket_name = os.getenv("AWS_S3_BUCKET_NAME")
+    s3_region = os.getenv("AWS_REGION", "us-east-1")  # Default to 'us-east-1' if not set
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    
+    # Check for missing environment variables
+    missing_vars = []
+    if not aws_access_key_id:
+        missing_vars.append("AWS_ACCESS_KEY_ID")
+    if not aws_secret_access_key:
+        missing_vars.append("AWS_SECRET_ACCESS_KEY")
+    if not s3_bucket_name:
+        missing_vars.append("AWS_S3_BUCKET_NAME")
+    if not openai_api_key:
+        missing_vars.append("OPENAI_API_KEY")
+    
+    if missing_vars:
+        st.error(f"Missing environment variables: {', '.join(missing_vars)}. Please set them in the .env file.")
         return
     
     # Initialize S3 client
-    s3 = boto3.client(
-        's3',
-        region_name=s3_region,
-        aws_access_key_id=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key
-    )
+    try:
+        s3 = boto3.client(
+            's3',
+            region_name=s3_region,
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key
+        )
+    except Exception as e:
+        st.error(f"Error initializing AWS S3 client: {e}")
+        return
     
     # Initialize OpenAI client
-    client = OpenAI(api_key=openai_api_key)
+    try:
+        client = OpenAI(api_key=openai_api_key)
+    except Exception as e:
+        st.error(f"Error initializing OpenAI client: {e}")
+        return
     
     # Prompt user to upload a video file
     uploaded_video = st.file_uploader("Upload a video file for scene search", type=["mp4", "avi", "mov", "mkv"])
     if uploaded_video is not None:
         # Save the uploaded video to a temporary file
         tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-        tfile.write(uploaded_video.read())
-        tfile.flush()
-        
-        # Display the video
-        st.video(tfile.name)
-        
-        # Extract scenes from the video
-        st.write("Extracting scenes from the video...")
         try:
-            scene_list = extract_scenes(tfile.name)
-            st.write(f"Extracted {len(scene_list)} scenes.")
-        except Exception as e:
-            st.error(f"Error extracting scenes: {e}")
-            return
-        
-        if not scene_list:
-            st.warning("No scenes were detected in the video.")
-            return
-        
-        # Process scenes
-        st.write("Processing scenes...")
-        scene_data_list = []
-        progress_bar = st.progress(0)
-        total_scenes = len(scene_list)
-        
-        # Process scenes sequentially to manage resource usage
-        for idx, scene_filename in enumerate(scene_list):
-            data = process_scene(scene_filename, s3, s3_bucket_name, s3_region, client)
-            if data:
-                scene_data_list.append(data)
-            progress_bar.progress((idx + 1) / total_scenes)
-        
-        if not scene_data_list:
-            st.error("No scenes were processed successfully.")
-            return
-        
-        # Create DataFrame
-        df_scenes = pd.DataFrame(scene_data_list)
-        
-        # User provides a prompt
-        st.write("### Search Scenes")
-        prompt = st.text_input("Enter a prompt to search for scenes:")
-        if prompt:
-            # Search for relevant scenes
-            results = search_scenes(prompt, df_scenes, client)
+            tfile.write(uploaded_video.read())
+            tfile.flush()
             
-            if results.empty:
-                st.write("No matching scenes found.")
+            # Display the video
+            st.video(tfile.name)
+            
+            # Extract scenes from the video
+            st.write("Extracting scenes from the video...")
+            try:
+                scene_list = extract_scenes(tfile.name)
+                st.write(f"Extracted {len(scene_list)} scenes.")
+            except Exception as e:
+                st.error(f"Error extracting scenes: {e}")
+                return
+            
+            if not scene_list:
+                st.warning("No scenes were detected in the video.")
+                return
+            
+            # Process scenes
+            st.write("Processing scenes...")
+            scene_data_list = []
+            progress_bar = st.progress(0)
+            total_scenes = len(scene_list)
+            
+            # Process scenes sequentially to manage resource usage
+            for idx, scene_filename in enumerate(scene_list):
+                data = process_scene(scene_filename, s3, s3_bucket_name, s3_region, client)
+                if data:
+                    scene_data_list.append(data)
+                progress_bar.progress((idx + 1) / total_scenes)
+            
+            if not scene_data_list:
+                st.error("No scenes were processed successfully.")
+                return
+            
+            # Create DataFrame
+            df_scenes = pd.DataFrame(scene_data_list)
+            
+            # User provides a prompt
+            st.write("### Search Scenes")
+            prompt = st.text_input("Enter a prompt to search for scenes:")
+            if prompt:
+                # Search for relevant scenes
+                results = search_scenes(prompt, df_scenes, client)
+                
+                if results.empty:
+                    st.write("No matching scenes found.")
+                else:
+                    # Display the results
+                    st.write("### Search Results")
+                    for index, row in results.iterrows():
+                        st.write(f"**Caption:** {row['caption']}")
+                        st.write(f"**Similarity Score:** {row['similarity']:.4f}")
+                        st.video(row['scene_url'])
             else:
-                # Display the results
-                st.write("### Search Results")
-                for index, row in results.iterrows():
-                    st.write(f"**Caption:** {row['caption']}")
-                    st.write(f"**Similarity Score:** {row['similarity']:.4f}")
-                    st.video(row['scene_url'])
-        else:
-            st.write("Please enter a prompt to search for scenes.")
+                st.write("Please enter a prompt to search for scenes.")
         
-        # Clean up temporary files
-        if os.path.exists(tfile.name):
-            os.unlink(tfile.name)
-    else:
-        st.write("Please upload a video file.")
+        finally:
+            # Clean up temporary files
+            if os.path.exists(tfile.name):
+                os.unlink(tfile.name)
+            if 'audio_file_path' in locals() and os.path.exists(audio_file_path):
+                os.unlink(audio_file_path)
+            # Note: subtitled_video_path is already cleaned up in the 'finally' block above
 
 def extract_scenes(video_path):
     # Use PySceneDetect to detect scenes
@@ -241,21 +267,25 @@ def upload_file_to_s3(file_path, s3, s3_bucket, s3_region, folder='files', expir
     elif ext.lower() in ['.srt']:
         content_type = 'text/plain'
     
-    # Upload the file with public-read ACL
-    s3.upload_file(
-        file_path, 
-        s3_bucket, 
-        s3_key, 
-        ExtraArgs={
-            'ACL': 'public-read',
-            'ContentType': content_type
-        }
-    )
-    
-    # Generate a public URL
-    file_url = f"https://{s3_bucket}.s3.{s3_region}.amazonaws.com/{s3_key}"
-    
-    return file_url
+    try:
+        # Upload the file with public-read ACL
+        s3.upload_file(
+            file_path, 
+            s3_bucket, 
+            s3_key, 
+            ExtraArgs={
+                'ACL': 'public-read',
+                'ContentType': content_type
+            }
+        )
+        
+        # Generate a public URL
+        file_url = f"https://{s3_bucket}.s3.{s3_region}.amazonaws.com/{s3_key}"
+        
+        return file_url
+    except Exception as e:
+        st.error(f"Error uploading {file_name} to S3: {e}")
+        return None
 
 def generate_caption(image_url, client):
     caption_system_prompt = '''
@@ -277,33 +307,17 @@ people can semantically search for scenes. Ensure your captions include:
             messages=[
                 {
                     "role": "system",
-                    "content": [
-                        {"type": "text", "text": caption_system_prompt}
-                    ]
+                    "content": caption_system_prompt
                 },
                 {
                     "role": "user",
-                    "content": [
-                        {"type": "text", "text": "Generate a caption for this image:"},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": image_url,
-                            }
-                        },
-                    ],
+                    "content": f"Generate a caption for this image: {image_url}"
                 }
             ],
         )
 
         # Access the message content directly from 'choices'
         caption = completion.choices[0].message.content.strip()
-
-        return caption
-    except Exception as e:
-        st.error(f"Error generating caption: {e}")
-        return None
-
 
         return caption
     except Exception as e:
