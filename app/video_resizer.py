@@ -146,30 +146,44 @@ def video_uploader():
         # Resize method
         resize_method = st.radio("Select Resize Method", ["Crop", "Pad (Add borders)"])
 
+        # Initialize crop variables
+        absolute_x = None
+        absolute_y = None
+        absolute_w = None
+        absolute_h = None
+
         # Initialize crop position only if the resize method is Crop
         if resize_method == "Crop":
             st.write("#### Select Crop Area")
             st.write("Use the rectangle tool to select the area you want to retain in the video.")
-            
+
             # Extract a thumbnail frame (e.g., at 1 second)
             try:
                 thumbnail_frame = clip.get_frame(1)  # Get frame at 1 second
                 thumbnail_image = Image.fromarray(thumbnail_frame)
-                thumbnail_image = thumbnail_image.resize((int(original_width * 0.5), int(original_height * 0.5)))  # Resize for display
+                # Resize thumbnail for display (reduce size for better performance)
+                display_scale = 0.5
+                display_width = int(original_width * display_scale)
+                display_height = int(original_height * display_scale)
+                thumbnail_image = thumbnail_image.resize((display_width, display_height))
             except Exception as e:
                 st.error(f"An error occurred while extracting a thumbnail frame: {e}")
                 clean_up_files([input_video_path])
                 return
 
-            # Define canvas parameters
+            # Define canvas dimensions
+            canvas_width = display_width
+            canvas_height = display_height
+
+            # Initialize the canvas
             canvas_result = st_canvas(
                 fill_color="rgba(0, 0, 0, 0)",  # Transparent
                 stroke_width=2,
                 stroke_color="#FF0000",
                 background_image=thumbnail_image,
                 update_streamlit=True,
-                height=int(original_height * 0.5),
-                width=int(original_width * 0.5),
+                height=canvas_height,
+                width=canvas_width,
                 drawing_mode="rect",
                 key="crop_canvas",
             )
@@ -178,10 +192,10 @@ def video_uploader():
             if canvas_result.json_data is not None and canvas_result.json_data["objects"]:
                 obj = canvas_result.json_data["objects"][0]
                 # Coordinates are relative to the displayed thumbnail
-                rel_x = obj["left"] / canvas_result.width
-                rel_y = obj["top"] / canvas_result.height
-                rel_w = obj["width"] / canvas_result.width
-                rel_h = obj["height"] / canvas_result.height
+                rel_x = obj["left"] / canvas_width
+                rel_y = obj["top"] / canvas_height
+                rel_w = obj["width"] / canvas_width
+                rel_h = obj["height"] / canvas_height
 
                 # Calculate absolute coordinates based on original video size
                 absolute_x = int(rel_x * original_width)
@@ -195,8 +209,8 @@ def video_uploader():
                 absolute_w = min(original_width - absolute_x, absolute_w)
                 absolute_h = min(original_height - absolute_y, absolute_h)
 
-                # Display the selected crop area
-                st.markdown(f"**Selected Crop Area:** {absolute_x}, {absolute_y}, {absolute_w}, {absolute_h}")
+                # Display the selected crop area size
+                st.markdown(f"**Selected Crop Area Size:** {absolute_w} x {absolute_h} pixels")
             else:
                 st.warning("Please draw a rectangle on the thumbnail to select the crop area.")
                 absolute_x = None
@@ -308,7 +322,11 @@ def video_uploader():
                 finally:
                     # Clean up temporary files and release resources
                     clip.close()
-                    clean_up_files([input_video_path, output_video_path])
+                    # Only clean up if output_video_path is defined
+                    files_to_clean = [input_video_path]
+                    if 'output_video_path' in locals() and os.path.exists(output_video_path):
+                        files_to_clean.append(output_video_path)
+                    clean_up_files(files_to_clean)
 
 def apply_crop(clip, target_width, target_height, position):
     """
