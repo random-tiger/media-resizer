@@ -286,7 +286,7 @@ def detect_people_regions_in_clip(clip):
     for idx in frame_indices:
         t = idx / clip.fps
         frame = clip.get_frame(t)
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)  # Use COLOR_RGB2GRAY since MoviePy uses RGB frames
 
         # Detect faces
         faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
