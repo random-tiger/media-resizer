@@ -164,7 +164,7 @@ def video_uploader():
 
                 resized_clip = clip.resize(newsize=(new_width, new_height))
 
-                # Automatically detect the optimal cropping region based on people detection
+                # Automatically detect the optimal cropping region based on face detection
                 final_clip = apply_crop(resized_clip, target_width, target_height)
 
                 # Save to a temporary file
@@ -226,7 +226,7 @@ def video_uploader():
 
 def apply_crop(clip, target_width, target_height):
     """
-    Apply automatic cropping to the video clip based on people detection.
+    Apply automatic cropping to the video clip based on face detection.
 
     Args:
         clip (moviepy.editor.VideoFileClip): The resized video clip.
@@ -260,7 +260,7 @@ def apply_crop(clip, target_width, target_height):
     frame_width, frame_height = new_width, new_height
     target_aspect_ratio = target_width / target_height
 
-    # Automatically detect people in the clip
+    # Automatically detect faces in the clip
     x1, y1, x2, y2 = detect_people_regions_in_clip(clip)
     x1, y1, x2, y2 = adjust_bounding_box_to_aspect_ratio(
         x1, y1, x2, y2, target_aspect_ratio, frame_width, frame_height
@@ -273,73 +273,32 @@ def apply_crop(clip, target_width, target_height):
 
 def detect_people_regions_in_clip(clip):
     import cv2
-    import os
     import numpy as np
-    import urllib.request
-    import tarfile
 
-    # Model file paths
-    model_dir = 'ssd_mobilenet_v3_large_coco_2020_01_14'
-    model_file = os.path.join(model_dir, 'frozen_inference_graph.pb')
-    config_file = 'ssd_mobilenet_v3_large_coco_2020_01_14.pbtxt'
-
-    # Download model files if they don't exist
-    if not os.path.exists(model_file) or not os.path.exists(config_file):
-        st.write('Downloading and extracting model files...')
-        try:
-            # Download the model tar file
-            model_tar = 'ssd_mobilenet_v3_large_coco_2020_01_14.tar.gz'
-            model_url = 'http://download.tensorflow.org/models/object_detection/ssd_mobilenet_v3_large_coco_2020_01_14.tar.gz'
-            urllib.request.urlretrieve(model_url, model_tar)
-
-            # Extract the tar file
-            tar = tarfile.open(model_tar)
-            tar.extractall()
-            tar.close()
-
-            # Clean up the tar file
-            os.remove(model_tar)
-
-            # Download the config file
-            config_url = 'https://raw.githubusercontent.com/opencv/opencv_extra/master/testdata/dnn/ssd_mobilenet_v3_large_coco_2020_01_14.pbtxt'
-            urllib.request.urlretrieve(config_url, config_file)
-        except Exception as e:
-            st.error(f"Error downloading model files: {e}")
-            return (0, 0, clip.w, clip.h)  # Fallback to full frame
-
-    # Initialize the model
-    net = cv2.dnn.readNetFromTensorflow(model_file, config_file)
+    # Load pre-trained face detector
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
     people_bounding_boxes = []
 
     total_frames = int(clip.duration * clip.fps)
-    frame_indices = np.linspace(0, total_frames - 1, num=min(30, total_frames)).astype(int)
+    frame_indices = np.linspace(0, total_frames - 1, num=min(10, total_frames)).astype(int)
 
     for idx in frame_indices:
         t = idx / clip.fps
         frame = clip.get_frame(t)
-        frame_height, frame_width = frame.shape[:2]
-        blob = cv2.dnn.blobFromImage(frame, size=(320, 320), swapRB=True, crop=False)
-        net.setInput(blob)
-        detections = net.forward()
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        for detection in detections[0, 0]:
-            confidence = float(detection[2])
-            class_id = int(detection[1])
-            # Class ID 1 corresponds to 'person' in COCO dataset
-            if class_id == 1 and confidence > 0.5:
-                xLeftBottom = int(detection[3] * frame_width)
-                yLeftBottom = int(detection[4] * frame_height)
-                xRightTop = int(detection[5] * frame_width)
-                yRightTop = int(detection[6] * frame_height)
+        # Detect faces
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
 
-                people_bounding_boxes.append((xLeftBottom, yLeftBottom, xRightTop, yRightTop))
+        for (x, y, w, h) in faces:
+            people_bounding_boxes.append((x, y, x + w, y + h))
 
-    # If no people detected, return the full frame
+    # If no faces detected, return the full frame
     if not people_bounding_boxes:
         return (0, 0, clip.w, clip.h)
 
-    # Compute the bounding rectangle that covers all people detected
+    # Compute the bounding rectangle that covers all faces detected
     x1 = min(box[0] for box in people_bounding_boxes)
     y1 = min(box[1] for box in people_bounding_boxes)
     x2 = max(box[2] for box in people_bounding_boxes)
