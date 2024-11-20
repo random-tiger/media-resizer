@@ -279,17 +279,17 @@ def detect_people_regions_in_clip(clip):
     import tarfile
 
     # Model file paths
-    model_dir = 'ssd_mobilenet_v3_large_coco_2019_08_14'
+    model_dir = 'ssd_mobilenet_v3_large_coco_2020_01_14'
     model_file = os.path.join(model_dir, 'frozen_inference_graph.pb')
-    config_file = 'ssd_mobilenet_v3_large_coco_2019_08_14.pbtxt'
+    config_file = 'ssd_mobilenet_v3_large_coco_2020_01_14.pbtxt'
 
     # Download model files if they don't exist
     if not os.path.exists(model_file) or not os.path.exists(config_file):
         st.write('Downloading and extracting model files...')
         try:
             # Download the model tar file
-            model_tar = 'ssd_mobilenet_v3_large_coco_2019_08_14.tar.gz'
-            model_url = 'http://download.tensorflow.org/models/object_detection/ssd_mobilenet_v3_large_coco_2019_08_14.tar.gz'
+            model_tar = 'ssd_mobilenet_v3_large_coco_2020_01_14.tar.gz'
+            model_url = 'http://download.tensorflow.org/models/object_detection/ssd_mobilenet_v3_large_coco_2020_01_14.tar.gz'
             urllib.request.urlretrieve(model_url, model_tar)
 
             # Extract the tar file
@@ -301,7 +301,7 @@ def detect_people_regions_in_clip(clip):
             os.remove(model_tar)
 
             # Download the config file
-            config_url = 'https://raw.githubusercontent.com/opencv/opencv_extra/master/testdata/dnn/ssd_mobilenet_v3_large_coco_2019_08_14.pbtxt'
+            config_url = 'https://raw.githubusercontent.com/opencv/opencv_extra/master/testdata/dnn/ssd_mobilenet_v3_large_coco_2020_01_14.pbtxt'
             urllib.request.urlretrieve(config_url, config_file)
         except Exception as e:
             st.error(f"Error downloading model files: {e}")
