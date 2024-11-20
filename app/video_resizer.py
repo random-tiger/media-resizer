@@ -140,27 +140,8 @@ def video_uploader():
         # Display the determined dimensions to the user
         st.markdown(f"**Target Dimensions:** {target_width} x {target_height} pixels")
 
-        # Resize method
-        resize_method = st.radio("Select Resize Method", ["Crop", "Pad (Add borders)"])
-
-        # Initialize crop position only if the resize method is Crop
-        if resize_method == "Crop":
-            crop_positions = [
-                "Center",
-                "Top",
-                "Bottom",
-                "Left",
-                "Right",
-                "Top-Left",
-                "Top-Right",
-                "Bottom-Left",
-                "Bottom-Right",
-                "Auto (Detect Motion)",
-                "Auto (Detect People)"
-            ]
-            crop_position = st.selectbox("Select Crop Position", crop_positions)
-        else:
-            crop_position = None  # Not applicable
+        # Resize method (only Crop is available since we're focusing on automatic detection)
+        resize_method = "Crop"
 
         output_format = st.selectbox("Output Format", ["mp4", "avi", "mov", "mkv"])
 
@@ -170,45 +151,18 @@ def video_uploader():
                 target_width = target_width
                 target_height = target_height
 
-                # Calculate scaling factor based on resize method
-                if resize_method == "Crop":
-                    # For cropping, scale up to ensure dimensions are larger
-                    scale_factor_w = target_width / clip.w
-                    scale_factor_h = target_height / clip.h
-                    scale_factor = max(scale_factor_w, scale_factor_h)
-                else:
-                    # For padding, scale down to ensure dimensions are smaller
-                    scale_factor_w = target_width / clip.w
-                    scale_factor_h = target_height / clip.h
-                    scale_factor = min(scale_factor_w, scale_factor_h)
+                # Calculate scaling factor
+                scale_factor_w = target_width / clip.w
+                scale_factor_h = target_height / clip.h
+                scale_factor = max(scale_factor_w, scale_factor_h)
 
                 new_width = int(clip.w * scale_factor)
                 new_height = int(clip.h * scale_factor)
 
                 resized_clip = clip.resize(newsize=(new_width, new_height))
 
-                if resize_method == "Crop":
-                    # Determine crop coordinates based on selected crop position
-                    final_clip = apply_crop(resized_clip, target_width, target_height, crop_position)
-                else:
-                    # Pad to desired dimensions
-                    pad_width = target_width - new_width
-                    pad_height = target_height - new_height
-
-                    # Ensure pad sizes are non-negative
-                    pad_left = int(pad_width / 2) if pad_width > 0 else 0
-                    pad_right = pad_width - pad_left if pad_width > 0 else 0
-                    pad_top = int(pad_height / 2) if pad_height > 0 else 0
-                    pad_bottom = pad_height - pad_top if pad_height > 0 else 0
-
-                    final_clip = margin(
-                        resized_clip,
-                        left=pad_left,
-                        right=pad_right,
-                        top=pad_top,
-                        bottom=pad_bottom,
-                        color=(0, 0, 0)
-                    )
+                # Automatically detect the optimal cropping region based on people detection
+                final_clip = apply_crop(resized_clip, target_width, target_height)
 
                 # Save to a temporary file
                 temp_video_file = tempfile.NamedTemporaryFile(delete=False, suffix='.' + output_format)
@@ -264,15 +218,14 @@ def video_uploader():
                 clip.close()
                 clean_up_files([input_video_path, output_video_path])
 
-def apply_crop(clip, target_width, target_height, position):
+def apply_crop(clip, target_width, target_height):
     """
-    Apply cropping to the video clip based on the selected position.
+    Apply automatic cropping to the video clip based on people detection.
 
     Args:
         clip (moviepy.editor.VideoFileClip): The resized video clip.
         target_width (int): The desired width after cropping.
         target_height (int): The desired height after cropping.
-        position (str): The crop position selected by the user.
 
     Returns:
         moviepy.editor.VideoFileClip: The cropped video clip.
@@ -301,103 +254,14 @@ def apply_crop(clip, target_width, target_height, position):
     frame_width, frame_height = new_width, new_height
     target_aspect_ratio = target_width / target_height
 
-    if position == "Auto (Detect Motion)":
-        x1, y1, x2, y2 = detect_motion_regions_in_clip(clip)
-        x1, y1, x2, y2 = adjust_bounding_box_to_aspect_ratio(x1, y1, x2, y2, target_aspect_ratio, frame_width, frame_height)
-    elif position == "Auto (Detect People)":
-        x1, y1, x2, y2 = detect_people_regions_in_clip(clip)
-        x1, y1, x2, y2 = adjust_bounding_box_to_aspect_ratio(x1, y1, x2, y2, target_aspect_ratio, frame_width, frame_height)
-    else:
-        # Calculate cropping coordinates based on position
-        if position == "Center":
-            x1 = (new_width - target_width) / 2
-            y1 = (new_height - target_height) / 2
-        elif position == "Top":
-            x1 = (new_width - target_width) / 2
-            y1 = 0
-        elif position == "Bottom":
-            x1 = (new_width - target_width) / 2
-            y1 = new_height - target_height
-        elif position == "Left":
-            x1 = 0
-            y1 = (new_height - target_height) / 2
-        elif position == "Right":
-            x1 = new_width - target_width
-            y1 = (new_height - target_height) / 2
-        elif position == "Top-Left":
-            x1 = 0
-            y1 = 0
-        elif position == "Top-Right":
-            x1 = new_width - target_width
-            y1 = 0
-        elif position == "Bottom-Left":
-            x1 = 0
-            y1 = new_height - target_height
-        elif position == "Bottom-Right":
-            x1 = new_width - target_width
-            y1 = new_height - target_height
-        else:
-            # Default to center if position is unrecognized
-            x1 = (new_width - target_width) / 2
-            y1 = (new_height - target_height) / 2
-
-        x2 = x1 + target_width
-        y2 = y1 + target_height
-
-        # Ensure coordinates are within the frame
-        x1 = max(0, x1)
-        y1 = max(0, y1)
-        x2 = min(new_width, x2)
-        y2 = min(new_height, y2)
+    # Automatically detect people in the clip
+    x1, y1, x2, y2 = detect_people_regions_in_clip(clip)
+    x1, y1, x2, y2 = adjust_bounding_box_to_aspect_ratio(x1, y1, x2, y2, target_aspect_ratio, frame_width, frame_height)
 
     # Apply cropping
     final_clip = clip.crop(x1=x1, y1=y1, x2=x2, y2=y2)
 
     return final_clip
-
-def detect_motion_regions_in_clip(clip):
-    import cv2
-    motion_bounding_boxes = []
-    prev_frame = None
-
-    total_frames = int(clip.duration * clip.fps)
-    frame_indices = np.linspace(0, total_frames - 1, num=min(30, total_frames)).astype(int)
-
-    for idx in frame_indices:
-        t = idx / clip.fps
-        frame = clip.get_frame(t)
-        frame_gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-        if prev_frame is None:
-            prev_frame = frame_gray
-            continue
-
-        # Compute absolute difference
-        diff = cv2.absdiff(prev_frame, frame_gray)
-        # Threshold the difference
-        _, thresh = cv2.threshold(diff, 30, 255, cv2.THRESH_BINARY)
-        # Dilate to fill in gaps
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5,5))
-        thresh = cv2.dilate(thresh, kernel, iterations=2)
-        # Find contours
-        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        for cnt in contours:
-            x, y, w, h = cv2.boundingRect(cnt)
-            motion_bounding_boxes.append((x, y, x+w, y+h))
-
-        prev_frame = frame_gray
-
-    # If no motion detected, return the full frame
-    if not motion_bounding_boxes:
-        return (0, 0, clip.w, clip.h)
-
-    # Compute the bounding rectangle that covers all motion
-    x1 = min(box[0] for box in motion_bounding_boxes)
-    y1 = min(box[1] for box in motion_bounding_boxes)
-    x2 = max(box[2] for box in motion_bounding_boxes)
-    y2 = max(box[3] for box in motion_bounding_boxes)
-
-    return x1, y1, x2, y2
 
 def detect_people_regions_in_clip(clip):
     import cv2
