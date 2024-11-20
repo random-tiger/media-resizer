@@ -401,31 +401,61 @@ def detect_motion_regions_in_clip(clip):
 
 def detect_people_regions_in_clip(clip):
     import cv2
+    import os
+    import numpy as np
+
+    # Paths to model files
+    model_file = 'MobileNetSSD_deploy.caffemodel'
+    config_file = 'MobileNetSSD_deploy.prototxt'
+
+    # Download model files if they don't exist
+    if not os.path.exists(model_file) or not os.path.exists(config_file):
+        st.write('Downloading model files...')
+        # URLs to download model files
+        model_url = 'https://github.com/chuanqi305/MobileNet-SSD/raw/master/MobileNetSSD_deploy.caffemodel'
+        config_url = 'https://raw.githubusercontent.com/chuanqi305/MobileNet-SSD/master/MobileNetSSD_deploy.prototxt'
+
+        # Download files
+        import urllib.request
+        urllib.request.urlretrieve(model_url, model_file)
+        urllib.request.urlretrieve(config_url, config_file)
+
+    # Initialize the model
+    net = cv2.dnn.readNetFromCaffe(config_file, model_file)
+
     people_bounding_boxes = []
 
     total_frames = int(clip.duration * clip.fps)
     frame_indices = np.linspace(0, total_frames - 1, num=min(30, total_frames)).astype(int)
 
-    # Initialize HOG descriptor/person detector
-    hog = cv2.HOGDescriptor()
-    hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
-
     for idx in frame_indices:
         t = idx / clip.fps
         frame = clip.get_frame(t)
-        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        frame_resized = cv2.resize(frame_bgr, (640, 480))
+        frame_resized = cv2.resize(frame, (300, 300))
+        blob = cv2.dnn.blobFromImage(frame_resized, 0.007843, (300, 300), 127.5)
+        net.setInput(blob)
+        detections = net.forward()
 
-        # Detect people in the frame
-        rects, weights = hog.detectMultiScale(frame_resized, winStride=(8,8), padding=(16,16), scale=1.05)
+        cols = frame_resized.shape[1]
+        rows = frame_resized.shape[0]
 
-        for (x, y, w, h) in rects:
-            # Scale coordinates back to original frame size
-            x = int(x * frame_bgr.shape[1] / frame_resized.shape[1])
-            y = int(y * frame_bgr.shape[0] / frame_resized.shape[0])
-            w = int(w * frame_bgr.shape[1] / frame_resized.shape[1])
-            h = int(h * frame_bgr.shape[0] / frame_resized.shape[0])
-            people_bounding_boxes.append((x, y, x+w, y+h))
+        for i in range(detections.shape[2]):
+            confidence = detections[0, 0, i, 2]
+            class_id = int(detections[0, 0, i, 1])
+            # Class ID 15 corresponds to 'person' in the model
+            if class_id == 15 and confidence > 0.5:
+                xLeftBottom = int(detections[0, 0, i, 3] * cols)
+                yLeftBottom = int(detections[0, 0, i, 4] * rows)
+                xRightTop = int(detections[0, 0, i, 5] * cols)
+                yRightTop = int(detections[0, 0, i, 6] * rows)
+
+                # Scale bounding box back to original frame size
+                xLeftBottom = int(xLeftBottom * frame.shape[1] / cols)
+                yLeftBottom = int(yLeftBottom * frame.shape[0] / rows)
+                xRightTop = int(xRightTop * frame.shape[1] / cols)
+                yRightTop = int(yRightTop * frame.shape[0] / rows)
+
+                people_bounding_boxes.append((xLeftBottom, yLeftBottom, xRightTop, yRightTop))
 
     # If no people detected, return the full frame
     if not people_bounding_boxes:
