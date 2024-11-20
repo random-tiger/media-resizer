@@ -12,7 +12,7 @@ import numpy as np
 def video_uploader():
     uploaded_video = st.file_uploader("Choose a video file", type=["mp4", "avi", "mov", "mkv"])
     if uploaded_video is not None:
-        # Save uploaded video to a temporary file
+        # Save video to temporary file
         tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
         tfile.write(uploaded_video.read())
         tfile.flush()
@@ -21,7 +21,7 @@ def video_uploader():
 
         st.write("### Resize Options")
 
-        # Load the video clip to get dimensions
+        # Load clip to get dimensions
         try:
             clip = mp.VideoFileClip(input_video_path)
             original_width = clip.w
@@ -32,7 +32,7 @@ def video_uploader():
             clean_up_files([input_video_path])
             return
 
-        # Define platforms and their aspect ratios
+        # Define platforms and aspect ratios
         platforms = [
             "Instagram", "Facebook", "YouTube", "Twitter",
             "Snapchat", "LinkedIn", "Pinterest", "Tubi", "Custom"
@@ -119,12 +119,12 @@ def video_uploader():
                     target_width = 1080
                     target_height = int(target_width / aspect_ratio[0] * aspect_ratio[1])
             else:
-                # For other platforms, set a default width and calculate height
+                # Default width and calculate height
                 target_width = 1080
                 target_height = int(target_width / aspect_ratio[0] * aspect_ratio[1])
 
         else:
-            # For Custom platform, set aspect ratio and determine dimensions
+            # Aspect ratio and determine dimensions
             common_aspect_ratios = {
                 "16:9": (16, 9),
                 "4:3": (4, 3),
@@ -136,7 +136,7 @@ def video_uploader():
             selected_common_aspect_ratio = st.selectbox("Select Aspect Ratio", aspect_ratio_names)
             aspect_ratio = common_aspect_ratios[selected_common_aspect_ratio]
 
-            # Set default width and calculate height
+            # Default width and calculate height
             target_width = 1080
             target_height = int(target_width / aspect_ratio[0] * aspect_ratio[1])
 
@@ -145,7 +145,7 @@ def video_uploader():
 
         output_format = st.selectbox("Output Format", ["mp4", "avi", "mov", "mkv"])
 
-        # Initialize output_video_path to None
+        # Initialize output_video_path
         output_video_path = None
 
         if st.button("Resize and Convert Video"):
@@ -163,7 +163,7 @@ def video_uploader():
                 # Automatically detect the optimal cropping region based on person detection
                 final_clip = apply_crop(resized_clip, target_width, target_height)
 
-                # Save to a temporary file
+                # Save to a temp file
                 temp_video_file = tempfile.NamedTemporaryFile(delete=False, suffix='.' + output_format)
                 output_video_path = temp_video_file.name
                 temp_video_file.close()  # Close the file so MoviePy can write to it
@@ -185,23 +185,22 @@ def video_uploader():
                     video_codec = 'libx264'
                     audio_codec = 'aac'
 
-                # Use faster encoding preset and other optimizations
                 ffmpeg_params = ['-preset', 'ultrafast', '-ac', '2']
                 final_clip.write_videofile(
                     output_video_path,
                     codec=video_codec,
                     audio_codec=audio_codec,
                     audio=True,
-                    threads=6,  # Adjust based on your CPU
+                    threads=6, 
                     ffmpeg_params=ffmpeg_params,
-                    logger=None  # Suppress verbose output
+                    logger=None 
                 )
 
-                # Display the resized video
+                # Display resized video
                 st.write("### Resized Video Preview")
                 st.video(output_video_path)
 
-                # Provide download link
+                # Download link
                 with open(output_video_path, 'rb') as f:
                     st.download_button(
                         label='Download Resized Video',
@@ -213,7 +212,7 @@ def video_uploader():
             except Exception as e:
                 st.error(f"An error occurred during video processing: {e}")
             finally:
-                # Clean up temporary files and release resources
+                # Clean up temporary files, release resources
                 clip.close()
                 files_to_clean = [input_video_path]
                 if output_video_path is not None:
