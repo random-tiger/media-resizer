@@ -273,25 +273,40 @@ def detect_people_regions_in_clip(clip):
     import cv2
     import os
     import numpy as np
+    import urllib.request
+    import tarfile
 
-    # Paths to model files
-    model_file = 'MobileNetSSD_deploy.caffemodel'
-    config_file = 'MobileNetSSD_deploy.prototxt'
+    # Model file paths
+    model_dir = 'ssd_mobilenet_v3_large_coco_2020_01_14'
+    model_file = os.path.join(model_dir, 'frozen_inference_graph.pb')
+    config_file = 'ssd_mobilenet_v3_large_coco_2020_01_14.pbtxt'
 
     # Download model files if they don't exist
     if not os.path.exists(model_file) or not os.path.exists(config_file):
-        st.write('Downloading model files...')
-        # URLs to download model files
-        model_url = 'https://github.com/chuanqi305/MobileNet-SSD/raw/master/MobileNetSSD_deploy.caffemodel'
-        config_url = 'https://raw.githubusercontent.com/chuanqi305/MobileNet-SSD/master/MobileNetSSD_deploy.prototxt'
+        st.write('Downloading and extracting model files...')
+        try:
+            # Download the model tar file
+            model_tar = 'ssd_mobilenet_v3_large_coco_2020_01_14.tar.gz'
+            model_url = 'http://download.tensorflow.org/models/object_detection/ssd_mobilenet_v3_large_coco_2020_01_14.tar.gz'
+            urllib.request.urlretrieve(model_url, model_tar)
 
-        # Download files
-        import urllib.request
-        urllib.request.urlretrieve(model_url, model_file)
-        urllib.request.urlretrieve(config_url, config_file)
+            # Extract the tar file
+            tar = tarfile.open(model_tar)
+            tar.extractall()
+            tar.close()
+
+            # Clean up the tar file
+            os.remove(model_tar)
+
+            # Download the config file
+            config_url = 'https://raw.githubusercontent.com/opencv/opencv/master/samples/dnn/ssd_mobilenet_v3_large_coco_2020_01_14.pbtxt'
+            urllib.request.urlretrieve(config_url, config_file)
+        except Exception as e:
+            st.error(f"Error downloading model files: {e}")
+            return (0, 0, clip.w, clip.h)  # Fallback to full frame
 
     # Initialize the model
-    net = cv2.dnn.readNetFromCaffe(config_file, model_file)
+    net = cv2.dnn.readNetFromTensorflow(model_file, config_file)
 
     people_bounding_boxes = []
 
@@ -301,29 +316,20 @@ def detect_people_regions_in_clip(clip):
     for idx in frame_indices:
         t = idx / clip.fps
         frame = clip.get_frame(t)
-        frame_resized = cv2.resize(frame, (300, 300))
-        blob = cv2.dnn.blobFromImage(frame_resized, 0.007843, (300, 300), 127.5)
+        frame_height, frame_width = frame.shape[:2]
+        blob = cv2.dnn.blobFromImage(frame, size=(320, 320), swapRB=True, crop=False)
         net.setInput(blob)
         detections = net.forward()
 
-        cols = frame_resized.shape[1]
-        rows = frame_resized.shape[0]
-
-        for i in range(detections.shape[2]):
-            confidence = detections[0, 0, i, 2]
-            class_id = int(detections[0, 0, i, 1])
-            # Class ID 15 corresponds to 'person' in the model
-            if class_id == 15 and confidence > 0.5:
-                xLeftBottom = int(detections[0, 0, i, 3] * cols)
-                yLeftBottom = int(detections[0, 0, i, 4] * rows)
-                xRightTop = int(detections[0, 0, i, 5] * cols)
-                yRightTop = int(detections[0, 0, i, 6] * rows)
-
-                # Scale bounding box back to original frame size
-                xLeftBottom = int(xLeftBottom * frame.shape[1] / cols)
-                yLeftBottom = int(yLeftBottom * frame.shape[0] / rows)
-                xRightTop = int(xRightTop * frame.shape[1] / cols)
-                yRightTop = int(yRightTop * frame.shape[0] / rows)
+        for detection in detections[0, 0]:
+            confidence = float(detection[2])
+            class_id = int(detection[1])
+            # Class ID 1 corresponds to 'person' in COCO dataset
+            if class_id == 1 and confidence > 0.5:
+                xLeftBottom = int(detection[3] * frame_width)
+                yLeftBottom = int(detection[4] * frame_height)
+                xRightTop = int(detection[5] * frame_width)
+                yRightTop = int(detection[6] * frame_height)
 
                 people_bounding_boxes.append((xLeftBottom, yLeftBottom, xRightTop, yRightTop))
 
