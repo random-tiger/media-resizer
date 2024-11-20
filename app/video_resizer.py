@@ -145,6 +145,9 @@ def video_uploader():
 
         output_format = st.selectbox("Output Format", ["mp4", "avi", "mov", "mkv"])
 
+        # Initialize output_video_path to None
+        output_video_path = None
+
         if st.button("Resize and Convert Video"):
             try:
                 # Use target_width and target_height
@@ -216,7 +219,10 @@ def video_uploader():
             finally:
                 # Clean up temporary files and release resources
                 clip.close()
-                clean_up_files([input_video_path, output_video_path])
+                files_to_clean = [input_video_path]
+                if output_video_path is not None:
+                    files_to_clean.append(output_video_path)
+                clean_up_files(files_to_clean)
 
 def apply_crop(clip, target_width, target_height):
     """
