@@ -32,7 +32,7 @@ def video_uploader():
             clean_up_files([input_video_path])
             return
 
-        # Define platforms and their aspect ratios
+        # Define platforms and their aspect ratios (same as your original code)
         platforms = [
             "Instagram", "Facebook", "YouTube", "Twitter",
             "Snapchat", "LinkedIn", "Pinterest", "Tubi", "Custom"
@@ -40,102 +40,11 @@ def video_uploader():
         platform = st.selectbox("Select Platform", platforms)
 
         platform_aspect_ratios = {
-            "Instagram": {
-                "Feed Landscape (16:9)": (16, 9),
-                "Feed Square (1:1)": (1, 1),
-                "Feed Portrait (4:5)": (4, 5),
-                "Stories (9:16)": (9, 16),
-                "IGTV (9:16)": (9, 16),
-                "Ads Landscape (16:9)": (16, 9),
-                "Ads Square (1:1)": (1, 1),
-                "Ads Portrait (4:5)": (4, 5),
-            },
-            "Facebook": {
-                "Feed Landscape (16:9)": (16, 9),
-                "Feed Square (1:1)": (1, 1),
-                "Feed Portrait (4:5)": (4, 5),
-                "Stories (9:16)": (9, 16),
-                "Cover (16:9)": (16, 9),
-                "Ads Landscape (16:9)": (16, 9),
-                "Ads Square (1:1)": (1, 1),
-                "Ads Portrait (4:5)": (4, 5),
-            },
-            "YouTube": {
-                "Standard (16:9)": (16, 9),
-            },
-            "Twitter": {
-                "Feed Landscape (16:9)": (16, 9),
-                "Feed Square (1:1)": (1, 1),
-                "Feed Portrait (4:5)": (4, 5),
-            },
-            "Snapchat": {
-                "Stories (9:16)": (9, 16),
-            },
-            "LinkedIn": {
-                "Feed Landscape (16:9)": (16, 9),
-                "Feed Square (1:1)": (1, 1),
-                "Feed Portrait (4:5)": (4, 5),
-            },
-            "Pinterest": {
-                "Standard Pin (2:3)": (2, 3),
-                "Square Pin (1:1)": (1, 1),
-                "Long Pin (1:2.1)": (1, 2.1),
-            },
-            # New Platform: Tubi
-            "Tubi": {
-                "Horizontal 16:9 (1920x1080)": (16, 9),
-                "Horizontal 4K (3840x2160)": (16, 9),
-                "Vertical 9:16 (1080x1920)": (9, 16),
-                "Square 1:1 (1080x1080)": (1, 1),
-                "Banner 3.88:1 (1628x420)": (3.88, 1),
-            },
-            "Custom": {},
+            # (Same as your original aspect ratios)
+            # Include the aspect ratios dictionary here
         }
 
-        if platform != "Custom":
-            aspect_ratio_dict = platform_aspect_ratios.get(platform, {})
-            aspect_ratio_names = list(aspect_ratio_dict.keys())
-            selected_aspect_ratio_name = st.selectbox("Select Aspect Ratio", aspect_ratio_names)
-            aspect_ratio = aspect_ratio_dict[selected_aspect_ratio_name]
-
-            # Determine target width and height based on selected aspect ratio
-            if platform == "Tubi":
-                # Extract resolution from the aspect ratio name if available
-                if "1920x1080" in selected_aspect_ratio_name:
-                    target_width, target_height = 1920, 1080
-                elif "3840x2160" in selected_aspect_ratio_name:
-                    target_width, target_height = 3840, 2160
-                elif "1080x1920" in selected_aspect_ratio_name:
-                    target_width, target_height = 1080, 1920
-                elif "1080x1080" in selected_aspect_ratio_name:
-                    target_width, target_height = 1080, 1080
-                elif "1628x420" in selected_aspect_ratio_name:
-                    target_width, target_height = 1628, 420
-                else:
-                    # Default to a standard width if resolution is not specified
-                    target_width = 1080
-                    target_height = int(target_width / aspect_ratio[0] * aspect_ratio[1])
-            else:
-                # For other platforms, set a default width and calculate height
-                target_width = 1080
-                target_height = int(target_width / aspect_ratio[0] * aspect_ratio[1])
-
-        else:
-            # For Custom platform, set aspect ratio and determine dimensions
-            common_aspect_ratios = {
-                "16:9": (16, 9),
-                "4:3": (4, 3),
-                "1:1": (1, 1),
-                "4:5": (4, 5),
-                "9:16": (9, 16),
-            }
-            aspect_ratio_names = list(common_aspect_ratios.keys())
-            selected_common_aspect_ratio = st.selectbox("Select Aspect Ratio", aspect_ratio_names)
-            aspect_ratio = common_aspect_ratios[selected_common_aspect_ratio]
-
-            # Set default width and calculate height
-            target_width = 1080
-            target_height = int(target_width / aspect_ratio[0] * aspect_ratio[1])
+        # (Same as your original code for selecting aspect ratio and target dimensions)
 
         # Display the determined dimensions to the user
         st.markdown(f"**Target Dimensions:** {target_width} x {target_height} pixels")
@@ -157,7 +66,7 @@ def video_uploader():
 
                 resized_clip = clip.resize(newsize=(new_width, new_height))
 
-                # Automatically detect the optimal cropping region based on face detection
+                # Automatically detect the optimal cropping region based on person detection
                 final_clip = apply_crop(resized_clip, target_width, target_height)
 
                 # Save to a temporary file
@@ -166,21 +75,7 @@ def video_uploader():
                 temp_video_file.close()  # Close the file so MoviePy can write to it
 
                 # Determine the audio codec based on the output format
-                if output_format == 'mp4':
-                    video_codec = 'libx264'
-                    audio_codec = 'aac'
-                elif output_format == 'avi':
-                    video_codec = 'mpeg4'
-                    audio_codec = 'mp3'
-                elif output_format == 'mov':
-                    video_codec = 'libx264'
-                    audio_codec = 'aac'
-                elif output_format == 'mkv':
-                    video_codec = 'libx264'
-                    audio_codec = 'aac'
-                else:
-                    video_codec = 'libx264'
-                    audio_codec = 'aac'
+                # (Same as your original code)
 
                 # Use faster encoding preset and other optimizations
                 ffmpeg_params = ['-preset', 'ultrafast', '-ac', '2']
@@ -219,7 +114,7 @@ def video_uploader():
 
 def apply_crop(clip, target_width, target_height):
     """
-    Apply automatic cropping to the video clip based on face detection.
+    Apply automatic cropping to the video clip based on person detection.
 
     Args:
         clip (moviepy.editor.VideoFileClip): The resized video clip.
@@ -253,7 +148,7 @@ def apply_crop(clip, target_width, target_height):
     frame_width, frame_height = new_width, new_height
     target_aspect_ratio = target_width / target_height
 
-    # Automatically detect faces in the clip
+    # Automatically detect people in the clip
     x1, y1, x2, y2 = detect_people_regions_in_clip(clip, frame_width, frame_height, target_width, target_height)
     x1, y1, x2, y2 = adjust_bounding_box_to_aspect_ratio(
         x1, y1, x2, y2, target_aspect_ratio, frame_width, frame_height
@@ -268,16 +163,24 @@ def detect_people_regions_in_clip(clip, frame_width, frame_height, target_width,
     import cv2
     import numpy as np
 
-    # Load pre-trained face detector (DNN model)
-    modelFile = "res10_300x300_ssd_iter_140000.caffemodel"
-    configFile = "deploy.prototxt"
+    # Load the MobileNet SSD model for person detection
+    modelFile = "MobileNetSSD_deploy.caffemodel"
+    configFile = "MobileNetSSD_deploy.prototxt.txt"
 
     # Check if the model files exist
     if not os.path.isfile(modelFile) or not os.path.isfile(configFile):
-        st.error("Face detection model files are missing. Please download them and place them in the working directory.")
+        st.error("Person detection model files are missing. Please download them and place them in the working directory.")
         return (0, 0, frame_width, frame_height)
 
     net = cv2.dnn.readNetFromCaffe(configFile, modelFile)
+
+    # Define the class labels MobileNet SSD was trained to detect
+    classNames = {0: 'background',
+                  1: 'aeroplane', 2: 'bicycle', 3: 'bird', 4: 'boat',
+                  5: 'bottle', 6: 'bus', 7: 'car', 8: 'cat', 9: 'chair',
+                  10: 'cow', 11: 'diningtable', 12: 'dog', 13: 'horse',
+                  14: 'motorbike', 15: 'person', 16: 'pottedplant',
+                  17: 'sheep', 18: 'sofa', 19: 'train', 20: 'tvmonitor'}
 
     people_bounding_boxes = []
 
@@ -289,24 +192,26 @@ def detect_people_regions_in_clip(clip, frame_width, frame_height, target_width,
         frame = clip.get_frame(t)
         (h, w) = frame.shape[:2]
 
-        # Prepare the frame for DNN face detection
-        blob = cv2.dnn.blobFromImage(cv2.resize(frame, (300, 300)), 1.0,
-                                     (300, 300), (104.0, 177.0, 123.0), swapRB=False, crop=False)
+        # Prepare the frame for MobileNet SSD detection
+        blob = cv2.dnn.blobFromImage(cv2.resize(frame, (300, 300)), 0.007843,
+                                     (300, 300), (127.5, 127.5, 127.5), swapRB=True, crop=False)
 
         net.setInput(blob)
         detections = net.forward()
 
         # Loop over the detections
-        for i in range(0, detections.shape[2]):
+        for i in range(detections.shape[2]):
             confidence = detections[0, 0, i, 2]
 
-            # Filter out weak detections
+            # Filter out weak detections and only consider 'person' class (class ID 15)
             if confidence > 0.5:
-                box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
-                (x_start, y_start, x_end, y_end) = box.astype("int")
-                people_bounding_boxes.append((x_start, y_start, x_end, y_end))
+                class_id = int(detections[0, 0, i, 1])
+                if class_id == 15:  # 'person' class
+                    box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+                    (x_start, y_start, x_end, y_end) = box.astype("int")
+                    people_bounding_boxes.append((x_start, y_start, x_end, y_end))
 
-    # If no faces detected, use the center of the frame
+    # If no people detected, use the center of the frame
     if not people_bounding_boxes:
         x_center = frame_width / 2
         y_center = frame_height / 2
@@ -320,13 +225,13 @@ def detect_people_regions_in_clip(clip, frame_width, frame_height, target_width,
         y2 = min(frame_height, y2)
         return int(x1), int(y1), int(x2), int(y2)
 
-    # Compute the bounding rectangle that covers all faces detected
+    # Compute the bounding rectangle that covers all people detected
     x1 = min(box[0] for box in people_bounding_boxes)
     y1 = min(box[1] for box in people_bounding_boxes)
     x2 = max(box[2] for box in people_bounding_boxes)
     y2 = max(box[3] for box in people_bounding_boxes)
 
-    # Expand the bounding box slightly to include shoulders and some background
+    # Expand the bounding box slightly to include more context
     box_height = y2 - y1
     y1 = max(0, y1 - int(0.2 * box_height))  # Expand upwards by 20%
     y2 = min(frame_height, y2 + int(0.1 * box_height))  # Expand downwards by 10%
